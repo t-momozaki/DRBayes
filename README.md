@@ -1,6 +1,4 @@
----
-title: 'DRBayes: Bayesian Doubly Robust Causal Inference via Posterior Coupling'
----
+# DRBayes: Bayesian Doubly Robust Causal Inference via Posterior Coupling
 
 <!-- badges: start -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
