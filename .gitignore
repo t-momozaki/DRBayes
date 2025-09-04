@@ -1,0 +1,45 @@
+# R specific
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+README.html
+
+# R Environment Variables
+.Renviron
+.Rprofile
+
+# renv (if using, but not recommended for packages)
+renv/
+renv.lock
+
+# Build files
+/*.tar.gz
+/*.Rcheck/
+.Rbuildignore
+inst/old
+Meta/
+
+# Documentation
+Meta/
+doc/
+inst/doc
+inst/scripts
+archive/
+vignettes/*.html
+vignettes/*.pdf
+vignettes/*.R
+vignettes/.build.timestamp
+
+# macOS
+.DS_Store
+
+# Temporary files
+*~
+*.swp
+*.swo
+
+# Build artifacts
+*.tar.gz
+*.zip
+

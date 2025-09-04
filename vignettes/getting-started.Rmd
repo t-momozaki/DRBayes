@@ -1,0 +1,861 @@
+---
+title: "Getting Started with DRBayes"
+author: "Tomotaka Momozaki"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Getting Started with DRBayes}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  error = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Introduction
+
+The **DRBayes** package implements Bayesian doubly robust causal inference methods via posterior coupling. This approach combines the robustness of doubly robust estimation with the uncertainty quantification benefits of Bayesian inference, providing a principled framework for causal effect estimation.
+
+## Key Features
+
+- **Formula Interface**: Intuitive R formula syntax compatible with `lm()`, `glm()`, and other standard functions
+- **Doubly robust estimation**: Consistent estimation even when either the outcome model or propensity score model is misspecified
+- **Bayesian uncertainty quantification**: Full posterior distributions for treatment effects
+- **Posterior coupling**: Novel methodology that avoids the feedback problem in traditional doubly robust methods
+- **Multiple outcome types**: Support for both continuous (linear regression) and binary outcomes (logistic/probit regression) 
+- **Automatic detection**: Smart detection of outcome family and link functions based on data
+- **Flexible modeling**: Built-in functions with standard and horseshoe priors plus support for external Bayesian software
+
+## Installation
+
+```{r install, eval=FALSE}
+# Install from GitHub (when available)
+# devtools::install_github("t-momozaki/DRBayes")
+```
+
+```{r load-packages}
+# Load the DRBayes package
+library(DRBayes)
+
+# Load additional packages for visualization
+library(ggplot2)
+```
+
+# Basic Concepts
+
+## Doubly Robust Estimation
+
+Doubly robust (DR) estimation combines two models:
+
+1. **Outcome model**: $E[Y|A,X] = \mu(A,X)$ - models the relationship between outcome and covariates
+2. **Propensity score model**: $P(A=1|X) = \pi(X)$ - models the treatment assignment mechanism
+
+The key property is that DR estimators remain consistent if **either** model is correctly specified, providing robustness against model misspecification.
+
+## Outcome Types and Model Families 
+
+DRBayes supports different outcome types through the `family` and `link` parameters:
+
+### Continuous Outcomes (Gaussian Family)
+- **Family**: `"gaussian"`
+- **Link**: `"identity"` (default)
+- **Model**: Linear regression
+- **ATE Interpretation**: Mean difference $E[Y|A=1,X] - E[Y|A=0,X]$
+
+### Binary Outcomes (Binomial Family)
+- **Family**: `"binomial"`
+- **Link**: `"logit"` (default) or `"probit"`
+- **Model**: Logistic or probit regression
+- **ATE Interpretation**: Probability difference $P(Y=1|A=1,X) - P(Y=1|A=0,X)$
+
+## Posterior Coupling Approach
+
+Traditional DR methods can suffer from the "feedback problem" where the two models influence each other in undesirable ways. The posterior coupling approach in DRBayes:
+
+- Generates posterior samples from both models separately
+- Uses sequential Monte Carlo to enforce the DR moment condition
+- Produces a coupled posterior that satisfies the DR property
+
+## Formula Interface
+
+The formula interface in DRBayes provides several advantages:
+
+- **Intuitive syntax**: Similar to `lm()` and `glm()`
+- **Automatic handling**: Design matrices, factor variables, interactions
+- **Missing data support**: Built-in handling of missing values
+- **Complex transformations**: Support for `I()`, `log()`, `poly()`, etc.
+
+# Example 1: Continuous Outcomes
+
+## Data Setup
+
+Let's start with a continuous outcome example using simulated data:
+
+```{r data-generation-continuous}
+# Set seed for reproducibility
+set.seed(1234)
+
+# Sample size
+n <- 2000
+
+# Create a data frame with all variables
+data <- data.frame(
+  X1 = rnorm(n),
+  X2 = rnorm(n),
+  X3 = rbinom(n, 1, 0.5),
+  X4 = rnorm(n)  # Additional covariate
+)
+
+# True propensity score (treatment assignment mechanism)
+ps_true <- plogis(0.2 + 0.5*data$X1 - 0.3*data$X2 + 0.4*data$X3)
+data$A <- rbinom(n, 1, ps_true)
+
+# True outcome model with treatment effect (CONTINUOUS)
+# ATE = 1.5 (main effect) + interaction effects
+data$Y <- 1 + 1.5*data$A + 0.8*data$X1 + 0.6*data$X2 + 0.4*data$X3 + 0.3*data$A*data$X1 + rnorm(n, 0, 1)
+
+# Calculate true ATE (accounting for interactions)
+# E[Y|A=1,X] - E[Y|A=0,X] = 1.5 + 0.3*E[X1] = 1.5 (since E[X1] = 0)
+true_ate_continuous <- 1.5 
+
+cat("True ATE (continuous):", round(true_ate_continuous, 3), "\n")
+cat("Sample statistics:\n")
+cat("  Treatment group mean:", round(mean(data$Y[data$A==1]), 3), "\n")
+cat("  Control group mean:", round(mean(data$Y[data$A==0]), 3), "\n")
+cat("  Observed difference:", round(mean(data$Y[data$A==1]) - mean(data$Y[data$A==0]), 3), "\n")
+cat("  Sample size:", nrow(data), "\n")
+cat("  Treatment prevalence:", round(mean(data$A), 3), "\n")
+```
+
+## Fitting the Model with Formula Interface
+
+```{r model-fitting-continuous}
+# Fit the model using the formula interface
+result_continuous <- DRBayes.PC(
+  outcome.formula = Y ~ A + X1 + X2 + X3 + A:X1,  # Outcome model with interaction
+  ps.formula = A ~ X1 + X2 + X3,                  # Propensity score model
+  data = data,
+  family = "gaussian",                            # For continuous outcomes
+  link = "identity",                              # Identity link (default)
+  outcome.model = B.LM,                           # Bayesian linear regression
+  ps.model = B.Logit,                             # Bayesian logistic regression
+  mc = 5000,                                      # MCMC iterations
+  bn = 1000,                                      # Burn-in
+  thin = 2,                                       # Thinning
+  outcome.priors = list(
+    theta_prior = 1/100,                          # Prior precision for regression coefficients
+    sigma_prior = c(1, 1)                         # Inverse-gamma prior for error variance
+  ),
+  ps.priors = list(
+    theta_prior = 1/100                           # Prior precision for logistic regression
+  )
+)
+
+cat("Continuous outcome model fitting completed!\n")
+cat("Number of posterior samples:", length(result_continuous$g.comp), "\n")
+cat("Model family:", result_continuous$family, "\n")
+cat("Link function:", result_continuous$link, "\n")
+```
+
+## Automatic Family Detection
+
+```{r auto-detection-continuous}
+# DRBayes can automatically detect the outcome type
+result_auto_continuous <- DRBayes.PC(
+  outcome.formula = Y ~ A + X1 + X2 + X3 + A:X1,
+  ps.formula = A ~ X1 + X2 + X3,
+  data = data,
+  # family and link not specified - will be auto-detected
+  outcome.model = B.LM, 
+  ps.model = B.Logit,
+  mc = 1000, bn = 200, thin = 2
+)
+
+cat("Auto-detected family:", result_auto_continuous$family, "\n")
+cat("Auto-detected link:", result_auto_continuous$link, "\n")
+cat("Auto-detected ATE:", round(mean(result_auto_continuous$pc), 3), "\n")
+```
+
+# Example 2: Binary Outcomes 
+
+## Data Setup (Binary)
+
+Now let's create a binary outcome example:
+
+```{r data-generation-binary}
+# Create new data for binary outcome
+set.seed(5678)
+n <- 2000
+
+data_binary <- data.frame(
+  X1 = rnorm(n),
+  X2 = rnorm(n),
+  X3 = rbinom(n, 1, 0.5)
+)
+
+# Treatment assignment (same mechanism)
+ps_true_bin <- plogis(0.2 + 0.5*data_binary$X1 - 0.3*data_binary$X2 + 0.4*data_binary$X3)
+data_binary$A <- rbinom(n, 1, ps_true_bin)
+
+# Binary outcome using logistic model
+linear_predictor <- -0.5 + 0.8*data_binary$A + 0.4*data_binary$X1 + 0.3*data_binary$X2 + 0.2*data_binary$X3
+prob_success <- plogis(linear_predictor)
+data_binary$Y <- rbinom(n, 1, prob_success)
+
+# Calculate true ATE for binary outcome (probability difference)
+# Create counterfactual outcomes
+prob_treated <- plogis(-0.5 + 0.8*1 + 0.4*data_binary$X1 + 0.3*data_binary$X2 + 0.2*data_binary$X3)
+prob_control <- plogis(-0.5 + 0.8*0 + 0.4*data_binary$X1 + 0.3*data_binary$X2 + 0.2*data_binary$X3)
+true_ate_binary <- mean(prob_treated - prob_control)
+
+cat("True ATE (binary, probability difference):", round(true_ate_binary, 3), "\n")
+cat("Sample statistics:\n")
+cat("  Treatment group success rate:", round(mean(data_binary$Y[data_binary$A==1]), 3), "\n")
+cat("  Control group success rate:", round(mean(data_binary$Y[data_binary$A==0]), 3), "\n")
+cat("  Observed difference:", round(mean(data_binary$Y[data_binary$A==1]) - mean(data_binary$Y[data_binary$A==0]), 3), "\n")
+```
+
+## Fitting Binary Outcome Models
+
+```{r model-fitting-binary}
+# Fit logistic model - will be auto-detected
+result_binary_auto <- DRBayes.PC(
+  outcome.formula = Y ~ A + X1 + X2 + X3,
+  ps.formula = A ~ X1 + X2 + X3,
+  data = data_binary,
+  # Auto-detection: all Y values are 0/1 → binomial family with logit link
+  outcome.model = B.Logit,
+  ps.model = B.Logit,
+  mc = 5000, bn = 1000, thin = 2
+)
+
+cat("Auto-detected family:", result_binary_auto$family, "\n")
+cat("Auto-detected link:", result_binary_auto$link, "\n")
+
+# Fit with explicit specification
+result_binary_logit <- DRBayes.PC(
+  outcome.formula = Y ~ A + X1 + X2 + X3,
+  ps.formula = A ~ X1 + X2 + X3,
+  data = data_binary,
+  family = "binomial",
+  link = "logit",
+  outcome.model = B.Logit,
+  ps.model = B.Logit,
+  mc = 5000, bn = 1000, thin = 2
+)
+
+# Fit with probit link
+result_binary_probit <- DRBayes.PC(
+  outcome.formula = Y ~ A + X1 + X2 + X3,
+  ps.formula = A ~ X1 + X2 + X3,
+  data = data_binary,
+  family = "binomial",
+  link = "probit",
+  outcome.model = B.Probit,
+  ps.model = B.Logit,
+  mc = 5000, bn = 1000, thin = 2
+)
+
+cat("Binary outcome models completed!\n")
+```
+
+# Advanced Formula Usage
+
+## Complex Transformations and Interactions
+
+```{r advanced-formulas}
+# Generate more complex data
+set.seed(9999)
+n <- 500
+
+data_advanced <- data.frame(
+  X1 = rnorm(n, 2, 0.5),     # Mean-shifted for log transformation
+  X2 = rnorm(n),
+  X3 = rnorm(n),
+  X4 = runif(n, 0, 5)      # Uniform for polynomial
+)
+
+# Treatment assignment
+ps_adv <- plogis(0.1 + 0.3*data_advanced$X1 + 0.2*data_advanced$X2^2 + 0.1*data_advanced$X3*data_advanced$X4)
+data_advanced$A <- rbinom(n, 1, ps_adv)
+
+# Complex outcome with non-linear relationships
+data_advanced$Y <- 2 + 1.2*data_advanced$A + 
+                   0.5*log(data_advanced$X1) + 
+                   0.3*data_advanced$X2^2 + 
+                   0.4*data_advanced$X3 + 
+                   0.2*data_advanced$X4^2 + 
+                   0.6*data_advanced$A*data_advanced$X1 + 
+                   rnorm(n, 0, 0.8)
+
+# Fit with complex formulas
+result_advanced <- DRBayes.PC(
+  outcome.formula = Y ~ A + log(X1) + I(X2^2) + X3 + poly(X4, 2) + A:X1,
+  ps.formula = A ~ X1 + X2 + X3 + I(X2^2) + X3:X4,
+  data = data_advanced,
+  family = "gaussian",
+  outcome.model = B.LM,
+  ps.model = B.Logit,
+  mc = 2000, bn = 500, thin = 2
+)
+
+cat("Advanced formula model completed!\n")
+cat("ATE estimate:", round(mean(result_advanced$pc), 3), "\n")
+```
+
+## Missing Data Handling
+
+```{r missing-data}
+# Create data with missing values
+data_missing <- data
+missing_indices_x1 <- sample(1:length(data_missing$Y), 30)
+missing_indices_x2 <- sample(1:length(data_missing$Y), 25)
+data_missing$X1[missing_indices_x1] <- NA
+data_missing$X2[missing_indices_x2] <- NA
+
+cat("Original sample size:", length(data_missing$Y), "\n")
+cat("Missing values in X1:", length(missing_indices_x1), "\n")
+cat("Missing values in X2:", length(missing_indices_x2), "\n")
+
+# Fit model with missing data using na.omit
+result_missing <- DRBayes.PC(
+  outcome.formula = Y ~ A + X1 + X2 + X3,
+  ps.formula = A ~ X1 + X2 + X3,
+  data = data_missing,
+  na.action = "na.omit",
+  outcome.model = B.LM,
+  ps.model = B.Logit,
+  mc = 2000, bn = 500, thin = 2
+)
+
+cat("After handling missing data:\n")
+cat("Analysis sample size:", result_missing$data_info$n_observations, "\n")
+cat("Excluded observations:", result_missing$data_info$missing_observations, "\n")
+cat("ATE with complete cases:", round(mean(result_missing$pc), 3), "\n")
+```
+
+# High-Dimensional Data with Horseshoe Priors
+
+```{r horseshoe-example}
+# Generate high-dimensional data
+set.seed(2025)
+n_hd <- 300
+p_hd <- 50  # Many covariates
+
+# Create high-dimensional data frame
+data_hd <- as.data.frame(matrix(rnorm(n_hd * p_hd), n_hd, p_hd))
+names(data_hd) <- paste0("X", 1:p_hd)
+
+# Only first few covariates are truly relevant
+data_hd$A <- rbinom(n_hd, 1, plogis(
+  1.0*data_hd$X1 + 1.0*data_hd$X2 - 1.0*data_hd$X3 + 1.0*data_hd$X4
+))
+
+# Outcome depends on only a few variables (sparse)
+data_hd$Y <- 2 + 1.5*data_hd$A + 
+             1.0*data_hd$X1 + 1.0*data_hd$X2 + 1.0*data_hd$X3 + 
+             1.0*data_hd$A*data_hd$X1 + 
+             rnorm(n_hd, 0, 1)
+
+# Create explicit formulas for high-dimensional data
+# Get all covariate names (excluding A and Y)
+covariate_names <- setdiff(names(data_hd), c("A", "Y"))
+outcome_formula_hd <- as.formula(paste("Y ~ A +", paste(covariate_names, collapse = " + ")))
+ps_formula_hd <- as.formula(paste("A ~", paste(covariate_names, collapse = " + ")))
+
+# Standard priors (might overfit)
+result_standard <- DRBayes.PC(
+  outcome.formula = outcome_formula_hd,  # Include all covariates
+  ps.formula = ps_formula_hd,            # All covariates except A and Y
+  data = data_hd,
+  outcome.model = B.LM,
+  ps.model = B.Logit,
+  mc = 5000, bn = 1000, thin = 2
+)
+
+# Horseshoe priors for regularization
+result_horseshoe <- DRBayes.PC(
+  outcome.formula = outcome_formula_hd,
+  ps.formula = ps_formula_hd,
+  data = data_hd,
+  outcome.model = HS.LM,        # Horseshoe linear regression
+  ps.model = HS.Logit,          # Horseshoe logistic regression
+  mc = 5000, bn = 1000, thin = 2
+)
+
+cat("High-dimensional results:\n")
+cat("True ATE: 1.5\n")
+cat("Standard priors ATE:", round(mean(result_standard$pc), 3), "\n")
+cat("Horseshoe priors ATE:", round(mean(result_horseshoe$pc), 3), "\n")
+cat("Standard priors SD:", round(sd(result_standard$pc), 3), "\n")
+cat("Horseshoe priors SD:", round(sd(result_horseshoe$pc), 3), "\n")
+```
+
+# Results and Interpretation
+
+## Summary Statistics
+
+```{r results-summary}
+# Create summary function
+summarize_results <- function(samples, method_name, true_value = NULL, outcome_type = "continuous") {
+  cat("\n", method_name, ":\n")
+  cat("  Mean:", round(mean(samples), 3), "\n")
+  cat("  SD:", round(sd(samples), 3), "\n")
+  cat("  95% CI: [", round(quantile(samples, 0.025), 3), ",", 
+      round(quantile(samples, 0.975), 3), "]\n")
+  
+  if (!is.null(true_value)) {
+    bias <- mean(samples) - true_value
+    cat("  Bias:", round(bias, 3), "\n")
+    coverage <- (true_value >= quantile(samples, 0.025)) & 
+                (true_value <= quantile(samples, 0.975))
+    cat("  95% CI Coverage:", coverage, "\n")
+  }
+
+  if (outcome_type == "binary") {
+    cat("  Interpretation: Treatment increases success probability by", 
+        round(mean(samples), 3), "on average\n")
+  }
+}
+
+# Summarize continuous outcome results
+cat("=== CONTINUOUS OUTCOME RESULTS ===")
+summarize_results(result_continuous$g.comp, "G-computation", true_ate_continuous)
+summarize_results(result_continuous$pc, "Posterior Coupling", true_ate_continuous)
+
+# Summarize binary outcome results  
+cat("\n=== BINARY OUTCOME RESULTS ===")
+summarize_results(result_binary_logit$g.comp, "G-computation (Logit)", true_ate_binary, "binary")
+summarize_results(result_binary_logit$pc, "Posterior Coupling (Logit)", true_ate_binary, "binary")
+summarize_results(result_binary_probit$pc, "Posterior Coupling (Probit)", true_ate_binary, "binary")
+```
+
+## Posterior Distributions
+
+```{r posterior-plots, fig.width=12, fig.height=8}
+# Create data frame for plotting
+plot_data <- data.frame(
+  ATE = c(result_continuous$g.comp, result_continuous$pc,
+          result_binary_logit$g.comp, result_binary_logit$pc),
+  Method = rep(c("G-computation", "Posterior Coupling"), 2),
+  Outcome_Type = rep(c("Continuous", "Continuous", "Binary", "Binary"), 
+                     each = length(result_continuous$g.comp))
+)
+
+# Create faceted density plot
+p1 <- ggplot(plot_data, aes(x = ATE, fill = Method)) +
+  geom_density(alpha = 0.7) +
+  geom_vline(data = data.frame(
+    Outcome_Type = c("Continuous", "Binary"),
+    true_ate = c(true_ate_continuous, true_ate_binary)
+  ), aes(xintercept = true_ate), linetype = "dashed", 
+             color = "red", linewidth = 1) +
+  facet_wrap(~ Outcome_Type, scales = "free") +
+  labs(
+    title = "Posterior Distributions of Average Treatment Effect",
+    subtitle = "Red line shows true ATE",
+    x = "Average Treatment Effect",
+    y = "Density",
+    fill = "Method"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(p1)
+```
+
+## Link Function Comparison (Binary Outcomes)
+
+```{r link-comparison-plot, fig.width=10, fig.height=6}
+# Compare logit vs probit for binary outcomes
+link_data <- data.frame(
+  ATE = c(result_binary_logit$pc, result_binary_probit$pc),
+  Link = rep(c("Logit", "Probit"), each = length(result_binary_logit$pc))
+)
+
+p2 <- ggplot(link_data, aes(x = ATE, fill = Link)) +
+  geom_density(alpha = 0.7) +
+  geom_vline(xintercept = true_ate_binary, linetype = "dashed", 
+             color = "red", linewidth = 1) +
+  labs(
+    title = "Comparison of Link Functions for Binary Outcomes",
+    subtitle = "Red line shows true ATE (probability difference)",
+    x = "Average Treatment Effect (Probability Difference)",
+    y = "Density",
+    fill = "Link Function"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(p2)
+```
+
+## Horseshoe vs Standard Priors
+
+```{r horseshoe-comparison-plot, fig.width=10, fig.height=6}
+# Compare standard vs horseshoe priors for high-dimensional data
+horseshoe_data <- data.frame(
+  ATE = c(result_standard$pc, result_horseshoe$pc),
+  Prior = rep(c("Standard", "Horseshoe"), each = length(result_standard$pc))
+)
+
+p3 <- ggplot(horseshoe_data, aes(x = ATE, fill = Prior)) +
+  geom_density(alpha = 0.7) +
+  geom_vline(xintercept = 1.5, linetype = "dashed", 
+             color = "red", linewidth = 1) +
+  labs(
+    title = "Standard vs Horseshoe Priors for High-Dimensional Data",
+    subtitle = "Red line shows true ATE = 1.5",
+    x = "Average Treatment Effect",
+    y = "Density",
+    fill = "Prior Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(p3)
+```
+
+## Convergence Diagnostics
+
+```{r convergence-diagnostics, fig.width=12, fig.height=8}
+# Create trace plots for both outcome types
+par(mfrow = c(2, 2))
+
+# Continuous outcome trace plots
+plot(result_continuous$pc, type = "l", 
+     main = "Trace Plot: Continuous Outcome (PC)",
+     xlab = "Iteration", ylab = "ATE", col = "blue")
+abline(h = true_ate_continuous, col = "red", lty = 2)
+
+plot(result_continuous$g.comp, type = "l", 
+     main = "Trace Plot: Continuous Outcome (G-comp)",
+     xlab = "Iteration", ylab = "ATE", col = "blue")
+abline(h = true_ate_continuous, col = "red", lty = 2)
+
+# Binary outcome trace plots
+plot(result_binary_logit$pc, type = "l", 
+     main = "Trace Plot: Binary Outcome (PC)",
+     xlab = "Iteration", ylab = "ATE (Prob. Diff.)", col = "blue")
+abline(h = true_ate_binary, col = "red", lty = 2)
+
+plot(result_binary_logit$g.comp, type = "l", 
+     main = "Trace Plot: Binary Outcome (G-comp)",
+     xlab = "Iteration", ylab = "ATE (Prob. Diff.)", col = "blue")
+abline(h = true_ate_binary, col = "red", lty = 2)
+
+par(mfrow = c(1, 1))
+```
+
+```{r convergence-stats}
+# Basic convergence statistics
+cat("Convergence Diagnostics:\n")
+cat("Continuous Outcome:\n")
+cat("  PC effective sample size:", 
+    round(length(result_continuous$pc) / (1 + 2 * sum(acf(result_continuous$pc, plot = FALSE)$acf[-1][1:min(10, length(result_continuous$pc)-1)]))), "\n")
+cat("  G-comp effective sample size:", 
+    round(length(result_continuous$g.comp) / (1 + 2 * sum(acf(result_continuous$g.comp, plot = FALSE)$acf[-1][1:min(10, length(result_continuous$g.comp)-1)]))), "\n")
+
+cat("Binary Outcome:\n")
+cat("  PC effective sample size:", 
+    round(length(result_binary_logit$pc) / (1 + 2 * sum(acf(result_binary_logit$pc, plot = FALSE)$acf[-1][1:min(10, length(result_binary_logit$pc)-1)]))), "\n")
+cat("  G-comp effective sample size:", 
+    round(length(result_binary_logit$g.comp) / (1 + 2 * sum(acf(result_binary_logit$g.comp, plot = FALSE)$acf[-1][1:min(10, length(result_binary_logit$g.comp)-1)]))), "\n")
+```
+
+# Model Comparison
+
+## Comparison with Classical Methods
+
+```{r classical-comparison}
+# ===== CONTINUOUS OUTCOME COMPARISON =====
+# Simple regression adjustment
+lm_model <- lm(Y ~ A + X1 + X2 + X3 + A:X1, data = data)
+reg_adj_ate_cont <- coef(lm_model)["A"]
+
+# Inverse probability weighting
+ps_model <- glm(A ~ X1 + X2 + X3, family = binomial, data = data)
+ps_hat <- predict(ps_model, type = "response")
+ipw_ate_cont <- mean(data$Y * data$A / ps_hat) - mean(data$Y * (1-data$A) / (1 - ps_hat))
+
+# ===== BINARY OUTCOME COMPARISON =====
+# Logistic regression adjustment
+glm_model <- glm(Y ~ A + X1 + X2 + X3, family = binomial, data = data_binary)
+newdata_1 <- newdata_0 <- data_binary[c("A", "X1", "X2", "X3")]
+newdata_1$A <- 1
+newdata_0$A <- 0
+prob1_hat <- predict(glm_model, newdata = newdata_1, type = "response")
+prob0_hat <- predict(glm_model, newdata = newdata_0, type = "response")
+reg_adj_ate_bin <- mean(prob1_hat - prob0_hat)
+
+# IPW for binary outcome (using same PS model structure)
+ps_model_bin <- glm(A ~ X1 + X2 + X3, family = binomial, data = data_binary)
+ps_hat_bin <- predict(ps_model_bin, type = "response")
+ipw_ate_bin <- mean(data_binary$Y * data_binary$A / ps_hat_bin) - 
+               mean(data_binary$Y * (1-data_binary$A) / (1 - ps_hat_bin))
+
+# Create comparison tables
+comparison_continuous <- data.frame(
+  Method = c("True ATE", "Regression Adjustment", "IPW", 
+             "DR (Bayesian, G-comp)", "DR (Bayesian, PC)"),
+  Estimate = c(true_ate_continuous, reg_adj_ate_cont, ipw_ate_cont,
+               mean(result_continuous$g.comp), mean(result_continuous$pc)),
+  SE_or_SD = c(NA, summary(lm_model)$coefficients["A", "Std. Error"], 
+               NA, sd(result_continuous$g.comp), sd(result_continuous$pc))
+)
+
+comparison_binary <- data.frame(
+  Method = c("True ATE", "Regression Adjustment", "IPW",
+             "DR (Bayesian, G-comp)", "DR (Bayesian, PC)"),
+  Estimate = c(true_ate_binary, reg_adj_ate_bin, ipw_ate_bin,
+               mean(result_binary_logit$g.comp), mean(result_binary_logit$pc)),
+  SE_or_SD = c(NA, NA, NA, 
+               sd(result_binary_logit$g.comp), sd(result_binary_logit$pc))
+)
+
+# Round numeric columns
+comparison_continuous[, c("Estimate", "SE_or_SD")] <- round(comparison_continuous[, c("Estimate", "SE_or_SD")], 3)
+comparison_binary[, c("Estimate", "SE_or_SD")] <- round(comparison_binary[, c("Estimate", "SE_or_SD")], 3)
+
+cat("=== CONTINUOUS OUTCOME COMPARISON ===\n")
+print(comparison_continuous)
+
+cat("\n=== BINARY OUTCOME COMPARISON ===\n")  
+print(comparison_binary)
+```
+
+# Practical Considerations
+
+## Formula Specification Guidelines
+
+Writing formulas in DRBayes is like telling the software how you think your data works. Here's a practical guide to help you build effective models.
+
+### Step-by-Step Approach to Building Your Outcome Model
+
+**Step 1: Start Simple**
+```r
+# Always include the treatment variable A - this is essential!
+outcome.formula = Y ~ A + X1 + X2 + X3
+```
+- **What this does**: Models Y as depending on treatment A plus your main confounders
+- **When to use**: This should be your starting point for any analysis
+- **Think of it as**: "My outcome depends on treatment plus the main factors I care about"
+
+**Step 2: Add Treatment Interactions (if relevant)**
+```r
+# Add interactions when treatment effects might vary by patient characteristics
+outcome.formula = Y ~ A + X1 + X2 + X3 + A:X1
+```
+- **What this does**: Allows the treatment effect to be different for different values of X1
+- **When to use**: When you suspect treatment works better/worse for certain groups
+- **Real example**: "Blood pressure medication might work differently for older vs younger patients"
+- **Interpretation**: If A:X1 coefficient is positive, treatment is more effective when X1 is higher
+
+**Step 3: Handle Non-Linear Relationships (when needed)**
+```r
+# Use transformations when relationships aren't straight lines
+outcome.formula = Y ~ A + log(X1) + I(X2^2) + X3 + A:X1
+
+# Or use polynomials for smooth curves
+outcome.formula = Y ~ A + X1 + poly(X2, 2) + X3 + A:X1
+```
+- **log(X1)**: Use when X1 has diminishing returns (e.g., income effects)
+- **I(X2^2)**: Use when you expect U-shaped or inverted-U relationships (e.g., age effects)
+- **poly(X2, 2)**: Similar to X2^2 but mathematically more stable
+- **Warning**: Don't use log() with zero or negative values!
+
+**Step 4: Advanced Specifications (use carefully)**
+```r
+# Only when you have strong reasons and enough data
+outcome.formula = Y ~ A + X1 + X2 + X3 + A:X1 + A:X2 + I(X1^2) + X1:X2
+```
+- **When to use**: Large datasets (n > 500) with clear theoretical justification
+- **Risk**: Overfitting - your model might work well on your data but poorly on new data
+
+### Building Your Propensity Score Model
+
+The propensity score model predicts who gets treatment. Think: "What factors influenced the treatment decision?"
+
+**Start Here:**
+```r
+# Include all variables that affect BOTH treatment assignment AND outcome
+ps.formula = A ~ X1 + X2 + X3
+```
+- **Key principle**: Include confounders (variables affecting both treatment and outcome)
+- **Don't include**: Pure predictors of outcome that don't affect treatment assignment
+- **Don't include**: The outcome variable Y itself
+
+**Add Complexity When Needed:**
+```r
+# Non-linear relationships in treatment assignment
+ps.formula = A ~ X1 + X2 + X3 + I(X1^2) + X1:X2
+```
+- **When to use**: When treatment assignment has complex patterns
+- **Example**: "Doctors might prescribe more aggressively for moderate-risk patients but less for very high-risk patients"
+
+**High-Dimensional Data:**
+```r
+# Include many variables (use with horseshoe priors)
+ps.formula = A ~ .  # All variables except A and Y
+```
+- **When to use**: Rich datasets with many potential confounders
+- **Requirement**: Must use regularized priors (HS.Logit, HS.Probit)
+- **Example**: Electronic health records with hundreds of variables
+
+### Quick Decision Guide
+
+**"Should I include this variable in my model?"**
+
+For Outcome Model:
+- ✅ **Always include**: Treatment variable A
+- ✅ **Usually include**: Strong predictors of outcome
+- ✅ **Consider including**: Variables that modify treatment effects
+- ❌ **Don't include**: Variables measured after treatment
+
+For Propensity Score Model:
+- ✅ **Always include**: Confounders (affect both treatment and outcome)
+- ✅ **Usually include**: Variables that predict treatment assignment
+- ❌ **Never include**: The outcome variable itself
+
+**"Should I add interactions/transformations?"**
+- ✅ **Yes, if**: You have theoretical reasons and sufficient sample size
+- ✅ **Yes, if**: Diagnostic plots suggest non-linear relationships
+- ❌ **No, if**: Your sample size is small (n < 200)
+- ❌ **No, if**: You're just ``fishing'' without theoretical justification
+
+### Common Mistakes to Avoid
+
+1. **Forgetting the treatment variable**: Always include A in your outcome formula
+2. **Including post-treatment variables**: Don't include variables measured after treatment
+3. **Over-complicating with small samples**: Keep it simple with n < 500
+4. **Ignoring domain knowledge**: Use subject-matter expertise, not just statistical significance
+
+## MCMC Recommendations
+
+- **MCMC iterations**: At least 2000 after burn-in for stable inference
+- **Burn-in**: Typically 20-25% of total iterations (e.g., 1000 out of 4000)
+- **Thinning**: Use `thin = 2` or `thin = 3` to reduce autocorrelation
+- **High-dimensional data**: May require more iterations and stronger priors
+
+## Missing Data Considerations
+
+```{r missing-data-options}
+# Different missing data strategies
+cat("Missing data handling options:\n")
+cat('na.action = "na.omit"     # Remove rows with any missing values (default)\n')
+cat('na.action = "na.fail"     # Stop if any missing values found\n')
+cat('na.action = "na.exclude"  # Similar to na.omit but preserves attributes\n')
+
+# Check data completeness before analysis
+cat("\nData completeness check:\n")
+cat("Complete cases in original data:", sum(complete.cases(data)), "out of", nrow(data), "\n")
+cat("Complete cases in missing data:", sum(complete.cases(data_missing)), "out of", nrow(data_missing), "\n")
+```
+
+## Troubleshooting Common Issues
+
+```{r diagnostics}
+# Check for extreme values
+cat("Posterior diagnostics:\n")
+cat("Continuous outcome range:", round(range(result_continuous$pc), 3), "\n")
+cat("Binary outcome range:", round(range(result_binary_logit$pc), 3), "\n")
+
+# Check for reasonable credible intervals
+continuous_ci <- quantile(result_continuous$pc, c(0.025, 0.975))
+binary_ci <- quantile(result_binary_logit$pc, c(0.025, 0.975))
+
+cat("95% CI width (continuous):", round(diff(continuous_ci), 3), "\n")
+cat("95% CI width (binary):", round(diff(binary_ci), 3), "\n")
+
+# Basic autocorrelation check
+acf_cont <- acf(result_continuous$pc, plot = FALSE, lag.max = 5)
+acf_bin <- acf(result_binary_logit$pc, plot = FALSE, lag.max = 5)
+
+cat("Lag-1 autocorrelation (continuous):", round(acf_cont$acf[2], 3), "\n")
+cat("Lag-1 autocorrelation (binary):", round(acf_bin$acf[2], 3), "\n")
+
+# Effective sample size estimation
+eff_cont <- length(result_continuous$pc) / (1 + 2 * sum(acf_cont$acf[-1]))
+eff_bin <- length(result_binary_logit$pc) / (1 + 2 * sum(acf_bin$acf[-1]))
+
+cat("Effective sample size (continuous):", round(max(eff_cont, 1)), "\n")
+cat("Effective sample size (binary):", round(max(eff_bin, 1)), "\n")
+```
+
+# Alternative: Bayesian Bootstrap Method
+
+```{r bayesian-bootstrap}
+# Compare with the Bayesian Bootstrap approach
+# Prepare data in the format expected by DRBayes.BB
+X.lm_bb <- data.frame(
+  A = data$A,
+  X1 = data$X1, X2 = data$X2, X3 = data$X3,
+  A_X1 = data$A * data$X1  # Interaction term
+)
+X.ps_bb <- data.frame(X1 = data$X1, X2 = data$X2, X3 = data$X3)
+
+result_bb <- DRBayes.BB(
+  Y = data$Y,
+  A = data$A,
+  X.lm = X.lm_bb,
+  X.ps = X.ps_bb,
+  num_iterations = 2000,
+  family = "gaussian"
+)
+
+cat("Bayesian Bootstrap ATE:", round(mean(result_bb), 3), "\n")
+cat("Bayesian Bootstrap SD:", round(sd(result_bb), 3), "\n")
+cat("95% CI: [", round(quantile(result_bb, c(0.025, 0.975)), 3), "]\n")
+
+# Compare all methods
+cat("\nMethod Comparison (Continuous Outcome):\n")
+cat("True ATE:", round(true_ate_continuous, 3), "\n")
+cat("Posterior Coupling:", round(mean(result_continuous$pc), 3), "\n")
+cat("G-computation:", round(mean(result_continuous$g.comp), 3), "\n")
+cat("Bayesian Bootstrap:", round(mean(result_bb), 3), "\n")
+```
+
+# Conclusion
+
+The DRBayes package with its formula interface provides a powerful and intuitive framework for Bayesian doubly robust causal inference. Key advantages include:
+
+## Formula Interface Benefits
+- **Familiar syntax**: Compatible with `lm()`, `glm()`, and other R functions
+- **Automatic handling**: Design matrices, factor variables, interactions, transformations
+- **Missing data support**: Built-in handling with flexible `na.action` options
+- **Complex modeling**: Easy specification of non-linear relationships
+
+## Methodological Advantages
+- **Robustness**: Consistent estimation under model misspecification
+- **Uncertainty quantification**: Full posterior distributions for treatment effects  
+- **Outcome flexibility**: Support for both continuous and binary outcomes with multiple link functions
+- **Regularization**: Horseshoe priors for high-dimensional data
+- **Software integration**: Works with built-in models or external Bayesian software
+
+## Practical Recommendations
+1. **Start simple**: Use basic formulas and automatic detection
+2. **Check diagnostics**: Monitor convergence and effective sample sizes
+3. **Use appropriate priors**: Horseshoe priors for high-dimensional data
+4. **Handle missing data**: Choose appropriate `na.action` strategy
+5. **Compare methods**: Use both posterior coupling and g-computation for robustness
+
+For integration with external Bayesian software (Stan, JAGS, brms), see the additional vignettes.
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```

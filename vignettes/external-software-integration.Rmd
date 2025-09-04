@@ -1,0 +1,803 @@
+---
+title: "Integrating DRBayes with External Bayesian Software"
+author: "Tomotaka Momozaki"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Integrating DRBayes with External Bayesian Software}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  error = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Introduction
+
+The **DRBayes** package implements Bayesian doubly robust causal inference methods via posterior coupling. One of the key features of this package is its flexibility in working with posterior samples from various Bayesian software packages, including Stan, JAGS, and brms.
+
+This vignette demonstrates how to integrate `DRBayes.PC()` with external Bayesian software for both **continuous and binary outcomes**, allowing researchers to leverage their preferred modeling frameworks while benefiting from the doubly robust posterior coupling methodology.
+
+## Key Features
+
+- **Formula Interface**: Intuitive R formula syntax compatible with `lm()`, `glm()`, and other standard functions
+- **Dual operation modes**: Internal sampling with built-in functions or external posterior samples
+- **Multiple outcome types**: Support for both continuous and binary outcomes 
+- **Flexible model families**: Works with Gaussian (linear) and binomial (logistic/probit) models 
+- **Automatic detection**: Smart detection of outcome family and link functions based on data
+- **Wide compatibility**: Works with Stan/cmdstanr, brms, JAGS, and other Bayesian software
+- **Seamless integration**: Uses standard formula interface for consistent syntax
+
+# Installation and Setup
+
+```{r install, eval=FALSE}
+# Install from GitHub (when available)
+# devtools::install_github("t-momozaki/DRBayes")
+
+# For Stan integration
+# install.packages("cmdstanr", repos = c('https://stan-dev.r-universe.dev', getOption("repos")))
+```
+
+```{r load-packages}
+# Load the DRBayes package
+library(DRBayes)
+
+# Load additional packages for external software integration
+# library(cmdstanr)  # For Stan integration
+library(ggplot2)   # For visualization
+library(dplyr)     # For data manipulation and pipe operator (%>%)
+```
+
+# Data Setup
+
+Let's generate both continuous and binary outcome examples that we'll use throughout this vignette:
+
+```{r data-setup}
+# Set seed for reproducibility
+set.seed(1234)
+
+# Generate synthetic data
+n <- 2000  # Sample size
+
+# Create a comprehensive data frame
+data <- data.frame(
+  X1 = rnorm(n),
+  X2 = rnorm(n),
+  X3 = rnorm(n),
+  X4 = rbinom(n, 1, 0.4)  # Binary covariate
+)
+
+# True treatment assignment mechanism
+ps_logits <- 0.5 + 0.4*data$X1 + 0.3*data$X2 - 0.2*data$X3 + 0.5*data$X4
+data$A <- rbinom(n, 1, plogis(ps_logits))
+
+# Continuous outcome (ATE = 1.5)
+data$Y_continuous <- 2 + 1.5*data$A + 0.8*data$X1 + 0.6*data$X2 + 0.4*data$X3 + 0.3*data$A*data$X1 + rnorm(n, 0, 1)
+
+# Binary outcome (ATE ≈ 0.18 in probability difference)
+linear_pred <- -0.5 + 0.8*data$A + 0.4*data$X1 + 0.3*data$X2 + 0.2*data$X3
+data$Y_binary <- rbinom(n, 1, plogis(linear_pred))
+
+# Calculate true ATE for binary outcome using counterfactual approach
+prob_treated <- plogis(-0.5 + 0.8*1 + 0.4*data$X1 + 0.3*data$X2 + 0.2*data$X3)
+prob_control <- plogis(-0.5 + 0.8*0 + 0.4*data$X1 + 0.3*data$X2 + 0.2*data$X3)
+true_ate_binary <- mean(prob_treated - prob_control)
+
+cat("Dataset created:\n")
+cat("Sample size:", n, "\n")
+cat("Treatment prevalence:", round(mean(data$A), 3), "\n")
+cat("True ATE (continuous) =", 1.5, "\n")
+cat("True ATE (binary, prob diff) =", round(true_ate_binary, 3), "\n")
+
+# Display data structure
+cat("\nData structure:\n")
+str(data)
+```
+
+# Basic Usage: Internal Sampling
+
+Before diving into external software integration, let's see how `DRBayes.PC()` works with its built-in model functions for both outcome types:
+
+```{r basic-usage}
+# Continuous outcome using built-in models
+result_internal_continuous <- DRBayes.PC(
+  outcome.formula = Y_continuous ~ A + X1 + X2 + X3 + A:X1,  # With interaction
+  ps.formula = A ~ X1 + X2 + X3 + X4,                        # Include more predictors
+  data = data,
+  family = "gaussian",              # For continuous outcomes
+  outcome.model = B.LM,             # Bayesian linear regression
+  ps.model = B.Logit,               # Bayesian logistic regression
+  mc = 5000, bn = 1000, thin = 2,
+  outcome.priors = list(theta_prior = 1/100, sigma_prior = c(1, 1)),
+  ps.priors = list(theta_prior = 1/100)
+)
+
+# Binary outcome using built-in models
+result_internal_binary <- DRBayes.PC(
+  outcome.formula = Y_binary ~ A + X1 + X2 + X3,
+  ps.formula = A ~ X1 + X2 + X3 + X4,
+  data = data,
+  # family automatically detected as "binomial" since Y_binary ∈ {0,1}
+  outcome.model = B.Logit,          # Bayesian logistic regression
+  ps.model = B.Logit,               # Bayesian logistic regression
+  mc = 5000, bn = 1000, thin = 2,
+  outcome.priors = list(theta_prior = 1/100),
+  ps.priors = list(theta_prior = 1/100)
+)
+
+# Summarize results
+cat("=== INTERNAL SAMPLING RESULTS ===\n")
+cat("Continuous Outcome:\n")
+cat("  Family used:", result_internal_continuous$family, "with", result_internal_continuous$link, "link\n")
+cat("  ATE (PC): Mean =", round(mean(result_internal_continuous$pc), 3), 
+    ", SD =", round(sd(result_internal_continuous$pc), 3), "\n")
+
+cat("Binary Outcome:\n")
+cat("  Family used:", result_internal_binary$family, "with", result_internal_binary$link, "link\n")
+cat("  ATE (PC): Mean =", round(mean(result_internal_binary$pc), 3), 
+    ", SD =", round(sd(result_internal_binary$pc), 3), "\n")
+```
+
+# External Software Integration
+
+## Understanding Design Matrix Dimensions
+
+When using external samples, it's crucial to understand how the formula interface creates design matrices:
+
+```{r design-matrix-check}
+# Check design matrix dimensions for our formulas
+outcome_matrix_continuous <- model.matrix(Y_continuous ~ A + X1 + X2 + X3 + A:X1, data)
+ps_matrix <- model.matrix(A ~ X1 + X2 + X3 + X4, data)
+outcome_matrix_binary <- model.matrix(Y_binary ~ A + X1 + X2 + X3, data)
+
+cat("Design Matrix Dimensions:\n")
+cat("Continuous outcome model:", ncol(outcome_matrix_continuous), "parameters\n")
+cat("Binary outcome model:", ncol(outcome_matrix_binary), "parameters\n")
+cat("Propensity score model:", ncol(ps_matrix), "parameters\n")
+
+# Show parameter names
+cat("\nParameter names:\n")
+cat("Continuous outcome:", colnames(outcome_matrix_continuous), "\n")
+cat("Binary outcome:", colnames(outcome_matrix_binary), "\n")
+cat("PS model:", colnames(ps_matrix), "\n")
+```
+
+## Stan/cmdstanr Integration
+
+Stan is a popular platform for statistical modeling. Here's how to integrate Stan models with DRBayes for both continuous and binary outcomes:
+
+### Step 1: Define Stan Models
+
+```{r stan-models}
+# Stan model for linear regression (continuous outcome)
+stan_lm <- "
+data {
+  int<lower=0> N;              // number of observations
+  int<lower=0> K;              // number of parameters
+  matrix[N, K] X;              // design matrix (including intercept)
+  vector[N] y;                 // response variable
+}
+parameters {
+  vector[K] beta;              // regression coefficients
+  real<lower=0> sigma;         // error standard deviation
+}
+model {
+  // Priors
+  beta ~ normal(0, sqrt(100)); // weakly informative priors
+  sigma ~ inv_gamma(1, 1);     // prior for error variance
+  
+  // Likelihood
+  y ~ normal(X * beta, sigma);
+}
+"
+
+# Stan model for logistic regression (binary outcome & propensity score)
+stan_logit <- "
+data {
+  int<lower=0> N;                     // number of observations
+  int<lower=0> K;                     // number of parameters
+  matrix[N, K] X;                     // design matrix (including intercept)
+  array[N] int<lower=0, upper=1> y;   // binary response
+}
+parameters {
+  vector[K] beta;              // regression coefficients
+}
+model {
+  // Priors
+  beta ~ normal(0, sqrt(100)); // weakly informative priors
+  
+  // Likelihood
+  y ~ bernoulli_logit(X * beta);
+}
+"
+
+# Stan model for probit regression (alternative for binary outcomes)
+stan_probit <- "
+data {
+  int<lower=0> N;                     // number of observations
+  int<lower=0> K;                     // number of parameters
+  matrix[N, K] X;                     // design matrix (including intercept)
+  array[N] int<lower=0, upper=1> y;   // binary response
+}
+parameters {
+  vector[K] beta;              // regression coefficients
+}
+model {
+  // Priors
+  beta ~ normal(0, sqrt(100)); // weakly informative priors
+  
+  // Likelihood
+  y ~ bernoulli(Phi(X * beta)); // Probit model
+}
+"
+```
+
+### Step 2: Compile and Fit Stan Models
+
+```{r stan-fitting}
+# Compile models
+mod_lm     <- cmdstanr::cmdstan_model(stan_file = cmdstanr::write_stan_file(stan_lm))
+mod_logit  <- cmdstanr::cmdstan_model(stan_file = cmdstanr::write_stan_file(stan_logit))
+mod_probit <- cmdstanr::cmdstan_model(stan_file = cmdstanr::write_stan_file(stan_probit))
+
+cat("Fitting Stan models...\n")
+
+# === CONTINUOUS OUTCOME MODEL ===
+stan_data_continuous <- list(
+  N = nrow(data),
+  K = ncol(outcome_matrix_continuous),
+  X = outcome_matrix_continuous,
+  y = data$Y_continuous
+)
+
+fit_continuous_stan <- mod_lm$sample(
+  data = stan_data_continuous,
+  chains = 4,
+  iter_sampling = 1000,
+  iter_warmup = 250,
+  refresh = 0,
+  show_messages = FALSE, 
+  show_exceptions = FALSE
+)
+
+# === BINARY OUTCOME MODELS ===
+stan_data_binary <- list(
+  N = nrow(data),
+  K = ncol(outcome_matrix_binary),
+  X = outcome_matrix_binary,
+  y = data$Y_binary
+)
+
+# Logistic regression
+fit_binary_logit_stan <- mod_logit$sample(
+  data = stan_data_binary,
+  chains = 4,
+  iter_sampling = 1000,
+  iter_warmup = 1000,
+  refresh = 0,
+  show_messages = FALSE, 
+  show_exceptions = FALSE
+)
+
+# Probit regression
+fit_binary_probit_stan <- mod_probit$sample(
+  data = stan_data_binary,
+  chains = 4,
+  iter_sampling = 1000,
+  iter_warmup = 1000,
+  refresh = 0,
+  show_messages = FALSE, 
+  show_exceptions = FALSE
+)
+
+# === PROPENSITY SCORE MODEL ===
+stan_data_ps <- list(
+  N = nrow(data),
+  K = ncol(ps_matrix),
+  X = ps_matrix,
+  y = data$A
+)
+
+fit_ps_stan <- mod_logit$sample(
+  data = stan_data_ps,
+  chains = 4,
+  iter_sampling = 1000,
+  iter_warmup = 1000,
+  refresh = 0,
+  show_messages = FALSE, 
+  show_exceptions = FALSE
+)
+
+cat("Stan model fitting completed!\n")
+```
+
+### Step 3: Extract Samples and Integrate with DRBayes
+
+```{r stan-integration}
+# Extract samples from Stan fits
+ps_samples_stan <- fit_ps_stan$draws("beta", format = "matrix")
+outcome_samples_continuous <- fit_continuous_stan$draws("beta", format = "matrix")
+outcome_samples_binary_logit <- fit_binary_logit_stan$draws("beta", format = "matrix")
+outcome_samples_binary_probit <- fit_binary_probit_stan$draws("beta", format = "matrix")
+
+# Verify sample dimensions
+cat("Sample dimensions:\n")
+cat("PS samples:", dim(ps_samples_stan), "\n")
+cat("Continuous outcome samples:", dim(outcome_samples_continuous), "\n")
+cat("Binary logit samples:", dim(outcome_samples_binary_logit), "\n")
+cat("Binary probit samples:", dim(outcome_samples_binary_probit), "\n")
+
+# === CONTINUOUS OUTCOME INTEGRATION ===
+result_stan_continuous <- DRBayes.PC(
+  outcome.formula = Y_continuous ~ A + X1 + X2 + X3 + A:X1,
+  ps.formula = A ~ X1 + X2 + X3 + X4,
+  data = data,
+  family = "gaussian",                    # Must specify for external samples
+  outcome.samples = outcome_samples_continuous,
+  ps.samples = ps_samples_stan,
+  bn = 0, thin = 2  
+)
+
+# === BINARY OUTCOME INTEGRATION (LOGIT) ===
+result_stan_binary_logit <- DRBayes.PC(
+  outcome.formula = Y_binary ~ A + X1 + X2 + X3,
+  ps.formula = A ~ X1 + X2 + X3 + X4,
+  data = data,
+  family = "binomial", 
+  link = "logit",
+  outcome.samples = outcome_samples_binary_logit,
+  ps.samples = ps_samples_stan,
+  bn = 0, thin = 2
+)
+
+# === BINARY OUTCOME INTEGRATION (PROBIT) ===
+result_stan_binary_probit <- DRBayes.PC(
+  outcome.formula = Y_binary ~ A + X1 + X2 + X3,
+  ps.formula = A ~ X1 + X2 + X3 + X4,
+  data = data,
+  family = "binomial", 
+  link = "probit",
+  outcome.samples = outcome_samples_binary_probit,
+  ps.samples = ps_samples_stan,
+  bn = 0, thin = 2
+)
+
+# Summarize Stan integration results
+cat("\n=== STAN INTEGRATION RESULTS ===\n")
+cat("Continuous (Linear):\n")
+cat("  ATE (PC): Mean =", round(mean(result_stan_continuous$pc), 3), 
+    ", SD =", round(sd(result_stan_continuous$pc), 3), "\n")
+
+cat("Binary (Logit):\n")
+cat("  ATE (PC): Mean =", round(mean(result_stan_binary_logit$pc), 3), 
+    ", SD =", round(sd(result_stan_binary_logit$pc), 3), "\n")
+
+cat("Binary (Probit):\n")
+cat("  ATE (PC): Mean =", round(mean(result_stan_binary_probit$pc), 3), 
+    ", SD =", round(sd(result_stan_binary_probit$pc), 3), "\n")
+```
+
+# Advanced Formula Usage with External Software
+
+## Complex Transformations and Interactions
+
+```{r advanced-formulas-stan}
+# Create data with more complex relationships
+set.seed(9876)
+n_complex <- 300
+
+data_complex <- data.frame(
+  X1 = rnorm(n_complex, 2, 0.5),  # For log transformation
+  X2 = rnorm(n_complex),
+  X3 = rnorm(n_complex),
+  X4 = runif(n_complex, 0, 5)   # For polynomial
+)
+
+# Treatment
+data_complex$A <- rbinom(n_complex, 1, plogis(0.2 + 0.3*data_complex$X1 + 0.2*data_complex$X2^2))
+
+# Outcome with complex relationships
+data_complex$Y <- 1.5 + 1.2*data_complex$A + 
+                  0.4*log(data_complex$X1) + 
+                  0.3*data_complex$X2^2 + 
+                  0.2*data_complex$X3 + 
+                  0.1*data_complex$X4^2 +
+                  0.5*data_complex$A*data_complex$X1 +
+                  rnorm(n_complex, 0, 0.8)
+
+# Check the complex design matrix
+complex_outcome_matrix <- model.matrix(Y ~ A + log(X1) + I(X2^2) + X3 + I(X4^2) + A:X1, data_complex)
+complex_ps_matrix <- model.matrix(A ~ X1 + I(X2^2), data_complex)
+
+cat("Complex formula design matrices:\n")
+cat("Outcome parameters:", ncol(complex_outcome_matrix), "\n")
+cat("PS parameters:", ncol(complex_ps_matrix), "\n")
+cat("Parameter names:", colnames(complex_outcome_matrix), "\n")
+
+# Fit complex model with Stan
+stan_data_complex <- list(
+  N = nrow(data_complex),
+  K = ncol(complex_outcome_matrix),
+  X = complex_outcome_matrix,
+  y = data_complex$Y
+)
+
+fit_complex_stan <- mod_lm$sample(
+  data = stan_data_complex,
+  chains = 4,
+  iter_sampling = 1000,
+  iter_warmup = 1000,
+  refresh = 0,
+  show_messages = FALSE, 
+  show_exceptions = FALSE
+)
+
+# PS model for complex data
+stan_data_complex_ps <- list(
+  N = nrow(data_complex),
+  K = ncol(complex_ps_matrix),
+  X = complex_ps_matrix,
+  y = data_complex$A
+)
+
+fit_complex_ps_stan <- mod_logit$sample(
+  data = stan_data_complex_ps,
+  chains = 4,
+  iter_sampling = 1000,
+  iter_warmup = 1000,
+  refresh = 0,
+  show_messages = FALSE, 
+  show_exceptions = FALSE
+)
+
+# Extract samples and use with DRBayes
+complex_outcome_samples <- fit_complex_stan$draws("beta", format = "matrix")
+complex_ps_samples <- fit_complex_ps_stan$draws("beta", format = "matrix")
+
+result_complex_stan <- DRBayes.PC(
+  outcome.formula = Y ~ A + log(X1) + I(X2^2) + X3 + I(X4^2) + A:X1,
+  ps.formula = A ~ X1 + I(X2^2),
+  data = data_complex,
+  family = "gaussian",
+  outcome.samples = complex_outcome_samples,
+  ps.samples = complex_ps_samples,
+  bn = 0, thin = 2
+)
+
+cat("Complex formula with Stan:\n")
+cat("ATE estimate:", round(mean(result_complex_stan$pc), 3), "\n")
+```
+
+
+# Comprehensive Comparison
+
+```{r comprehensive-comparison}
+# Create a comprehensive comparison function
+compare_all_results <- function() {
+  
+  results_list <- list(
+    "Built-in Continuous" = result_internal_continuous,
+    "Built-in Binary" = result_internal_binary,
+    "Stan Continuous" = result_stan_continuous,
+    "Stan Binary (Logit)" = result_stan_binary_logit,
+    "Stan Binary (Probit)" = result_stan_binary_probit,
+    "Stan Complex" = result_complex_stan
+  )
+  
+  outcome_types <- c("Continuous", "Binary", "Continuous", "Binary", "Binary", "Continuous")
+  true_ates <- c(1.5, true_ate_binary, 1.5, true_ate_binary, true_ate_binary, 1.2) # Approximate for complex
+  
+  comparison_df <- data.frame(
+    Method = names(results_list),
+    Outcome_Type = outcome_types,
+    True_ATE = true_ates,
+    PC_Mean = sapply(results_list, function(x) mean(x$pc)),
+    PC_SD = sapply(results_list, function(x) sd(x$pc)),
+    PC_CI_Lower = sapply(results_list, function(x) quantile(x$pc, 0.025)),
+    PC_CI_Upper = sapply(results_list, function(x) quantile(x$pc, 0.975)),
+    Family = sapply(results_list, function(x) x$family),
+    Link = sapply(results_list, function(x) x$link)
+  )
+  
+  # Calculate bias and coverage
+  comparison_df$Bias <- comparison_df$PC_Mean - comparison_df$True_ATE
+  comparison_df$Coverage <- mapply(function(true_val, ci_low, ci_high) {
+    (true_val >= ci_low) & (true_val <= ci_high)
+  }, comparison_df$True_ATE, comparison_df$PC_CI_Lower, comparison_df$PC_CI_Upper)
+  
+  # Round numeric columns
+  numeric_cols <- c("True_ATE", "PC_Mean", "PC_SD", "PC_CI_Lower", "PC_CI_Upper", "Bias")
+  comparison_df[, numeric_cols] <- round(comparison_df[, numeric_cols], 3)
+  
+  return(comparison_df)
+}
+
+comparison_table <- compare_all_results()
+print(comparison_table)
+```
+
+```{r comparison-visualization, fig.width=14, fig.height=10}
+# Create comprehensive visualization
+plot_data <- comparison_table %>%
+  mutate(
+    Method_Clean = gsub("Built-in ", "", Method),
+    Method_Clean = gsub("Stan ", "", Method_Clean),
+    CI_Width = PC_CI_Upper - PC_CI_Lower,
+    Software = ifelse(grepl("Built-in", Method), "Built-in", "Stan")
+  )
+
+# ATE comparison plot
+p1 <- ggplot(plot_data, aes(x = Method_Clean, y = PC_Mean, color = Software, shape = Outcome_Type)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = PC_CI_Lower, ymax = PC_CI_Upper), 
+                width = 0.2, linewidth = 1) +
+  geom_point(aes(y = True_ATE), shape = 4, size = 5, color = "red") +
+  facet_wrap(~ Outcome_Type, scales = "free_y", ncol = 2) +
+  labs(
+    title = "ATE Estimates: Built-in vs External Software Integration",
+    subtitle = "Points show posterior means, bars show 95% CIs, red X shows true ATE",
+    x = "Method", 
+    y = "ATE Estimate",
+    color = "Software",
+    shape = "Outcome Type"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    strip.text = element_text(size = 12, face = "bold")
+  )
+
+print(p1)
+
+# Bias comparison
+p2 <- ggplot(plot_data, aes(x = Method_Clean, y = Bias, fill = Software)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  facet_wrap(~ Outcome_Type, scales = "free_y") +
+  labs(
+    title = "Bias Comparison Across Methods",
+    x = "Method",
+    y = "Bias (Estimate - True ATE)",
+    fill = "Software"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
+print(p2)
+```
+
+# Posterior Distribution Comparisons
+
+```{r posterior-distributions, fig.width=14, fig.height=12}
+# Create data frame for all posterior distributions
+create_posterior_data <- function() {
+  data.frame(
+    ATE = c(
+      result_internal_continuous$pc,
+      result_stan_continuous$pc,
+      result_internal_binary$pc,
+      result_stan_binary_logit$pc,
+      result_stan_binary_probit$pc
+    ),
+    Method = rep(c("Built-in", "Stan", "Built-in", "Stan (Logit)", "Stan (Probit)"), 
+                 times = c(
+                   length(result_internal_continuous$pc),
+                   length(result_stan_continuous$pc),
+                   length(result_internal_binary$pc),
+                   length(result_stan_binary_logit$pc),
+                   length(result_stan_binary_probit$pc)
+                 )),
+    Outcome_Type = rep(c("Continuous", "Continuous", "Binary", "Binary", "Binary"),
+                      times = c(
+                        length(result_internal_continuous$pc),
+                        length(result_stan_continuous$pc),
+                        length(result_internal_binary$pc),
+                        length(result_stan_binary_logit$pc),
+                        length(result_stan_binary_probit$pc)
+                      ))
+  )
+}
+
+posterior_data <- create_posterior_data()
+
+# Create density plots
+p3 <- ggplot(posterior_data, aes(x = ATE, fill = Method)) +
+  geom_density(alpha = 0.7) +
+  geom_vline(data = data.frame(
+    Outcome_Type = c("Continuous", "Binary"),
+    true_ate = c(1.5, true_ate_binary)
+  ), aes(xintercept = true_ate), linetype = "dashed", 
+             color = "red", linewidth = 1) +
+  facet_wrap(~ Outcome_Type, scales = "free", ncol = 1) +
+  labs(
+    title = "Posterior Distributions: Built-in vs External Software",
+    subtitle = "Red line shows true ATE",
+    x = "Average Treatment Effect",
+    y = "Density",
+    fill = "Method"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(size = 12, face = "bold")
+  )
+
+print(p3)
+```
+
+# Best Practices for External Integration
+
+## Formula Interface Guidelines
+
+### 1. Design Matrix Consistency
+```r
+# Always check design matrix dimensions before fitting external models
+outcome_matrix <- model.matrix(your_outcome_formula, data)
+ps_matrix <- model.matrix(your_ps_formula, data)
+
+cat("Expected parameter counts:\n")
+cat("Outcome model:", ncol(outcome_matrix), "\n")
+cat("PS model:", ncol(ps_matrix), "\n")
+
+# Your external software must produce samples with these exact dimensions
+```
+
+### 2. Family and Link Specification
+```r
+# For external samples, always specify family and link explicitly
+result <- DRBayes.PC(
+  outcome.formula = Y ~ A + X1 + X2,
+  ps.formula = A ~ X1 + X2 + X3,
+  data = data,
+  family = "binomial",        # Required for external samples
+  link = "logit",            # Required for external samples
+  outcome.samples = external_outcome_samples,
+  ps.samples = external_ps_samples
+)
+```
+
+### 3. Sample Dimension Validation
+```r
+# Create validation function
+validate_external_samples <- function(outcome_samples, ps_samples, 
+                                     outcome.formula, ps.formula, data) {
+  outcome_matrix <- model.matrix(outcome.formula, data)
+  ps_matrix <- model.matrix(ps.formula, data)
+  
+  errors <- c()
+  
+  if (ncol(outcome_samples) != ncol(outcome_matrix)) {
+    errors <- c(errors, sprintf("Outcome samples: expected %d cols, got %d", 
+                               ncol(outcome_matrix), ncol(outcome_samples)))
+  }
+  
+  if (ncol(ps_samples) != ncol(ps_matrix)) {
+    errors <- c(errors, sprintf("PS samples: expected %d cols, got %d", 
+                               ncol(ps_matrix), ncol(ps_samples)))
+  }
+  
+  if (nrow(outcome_samples) != nrow(ps_samples)) {
+    errors <- c(errors, "Sample counts don't match between outcome and PS models")
+  }
+  
+  if (length(errors) > 0) {
+    stop(paste(errors, collapse = "; "))
+  } else {
+    cat("Sample dimensions validated successfully!\n")
+  }
+}
+
+# Use validation
+validate_external_samples(outcome_samples_continuous, ps_samples_stan,
+                         Y_continuous ~ A + X1 + X2 + X3 + A:X1,
+                         A ~ X1 + X2 + X3 + X4, data)
+```
+
+## Software-Specific Integration Tips
+
+### Stan/cmdstanr
+- Use `refresh = 0` for silent fitting in production
+- Consider `parallel_chains = 4` for faster computation
+- For binary outcomes, ensure correct likelihood specification
+
+```r
+# Best practices for Stan integration
+# 1. Use consistent parameterization
+# 2. Include intercepts in design matrices
+# 3. Match DRBayes prior specifications when possible
+# 4. Use 'format = "matrix"' for draws extraction
+
+# Example Stan workflow
+fit <- cmdstan_model(stan_file)$sample(
+  data = list(N = nrow(data), K = ncol(design_matrix), 
+              X = design_matrix, y = response),
+  chains = 4,
+  iter_sampling = 1000,
+  refresh = 0
+)
+
+samples <- fit$draws("beta", format = "matrix")
+```
+
+## Troubleshooting Guide
+
+```{r troubleshooting-examples}
+# Common issues and solutions
+
+# 1. Dimension mismatch error
+tryCatch({
+  # This will fail - wrong number of columns
+  wrong_samples <- outcome_samples_continuous[, 1:3]  # Only 3 columns instead of required
+  DRBayes.PC(
+    outcome.formula = Y_continuous ~ A + X1 + X2 + X3 + A:X1,
+    ps.formula = A ~ X1 + X2 + X3 + X4,
+    data = data,
+    family = "gaussian",
+    outcome.samples = wrong_samples,
+    ps.samples = ps_samples_stan
+  )
+}, error = function(e) {
+  cat("Expected error - dimension mismatch:\n")
+  cat(e$message, "\n\n")
+})
+
+# 2. Missing family specification
+tryCatch({
+  DRBayes.PC(
+    outcome.formula = Y_continuous ~ A + X1 + X2 + X3,
+    ps.formula = A ~ X1 + X2 + X3 + X4,
+    data = data,
+    # Missing family specification for external samples
+    outcome.samples = outcome_samples_continuous[, 1:5], # Adjust to right size
+    ps.samples = ps_samples_stan
+  )
+}, error = function(e) {
+  cat("Expected error - missing family specification:\n")
+  cat(e$message, "\n\n")
+})
+
+# 3. Successful validation
+cat("Successful integration requires:\n")
+cat("1. Correct sample dimensions\n")
+cat("2. Explicit family and link specification\n")
+cat("3. Consistent formula specifications\n")
+```
+
+# Conclusion
+
+The **DRBayes** package provides seamless integration with popular Bayesian software for both continuous and binary outcomes, allowing researchers to:
+
+1. **Leverage existing expertise** with their preferred Bayesian software
+2. **Handle multiple outcome types** with appropriate model families and link functions 
+3. **Maintain modeling flexibility** while benefiting from doubly robust inference
+4. **Compare results** across different software implementations and link functions
+5. **Scale to complex models** that may be difficult to implement in built-in functions
+
+The posterior coupling approach ensures that regardless of which software is used for initial model fitting, the final causal inference benefits from the doubly robust properties and uncertainty quantification that the method provides.
+
+For more information about the theoretical foundations of the posterior coupling method, see:
+
+> Orihara, S., Momozaki, T., & Sugasawa, S. (2025). Bayesian Doubly Robust Causal Inference via Posterior Coupling. arXiv preprint arXiv:2506.04868.
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```

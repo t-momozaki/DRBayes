@@ -1,0 +1,44 @@
+Package: DRBayes
+Type: Package
+Title: Bayesian Doubly Robust Causal Inference Methods
+Version: 0.1.0
+Author: Tomotaka Momozaki <t_momozaki@rs.tus.ac.jp>
+Maintainer: Tomotaka Momozaki <t_momozaki@rs.tus.ac.jp>
+Description: Implements Bayesian doubly robust methods for causal inference, 
+    including posterior coupling and Bayesian bootstrap approaches. 
+    Provides tools for simulation studies and synthetic data generation.
+    The package includes functions for generating synthetic datasets,
+    running parallel simulations, and estimating average treatment effects
+    using state-of-the-art Bayesian methods. 
+    When using this package, please cite: Orihara, S., Momozaki, T., 
+    & Sugasawa, S. (2025). Bayesian Doubly Robust Causal Inference via 
+    Posterior Coupling. arXiv preprint arXiv:2506.04868.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.3.2
+Depends: 
+    R (>= 3.5.0)
+Imports:
+    MCMCpack,
+    future,
+    furrr,
+    parallelly,
+    extraDistr,
+    RcppTN,
+    pgdraw,
+    mvtnorm,
+    stats,
+    base, 
+    nleqslv
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    devtools,
+    roxygen2,
+    cmdstanr,
+    ggplot2,       
+    dplyr          
+VignetteBuilder: knitr
+Config/testthat/edition: 3
