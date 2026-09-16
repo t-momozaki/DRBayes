@@ -28,11 +28,20 @@ own initialiser; it reported nothing there either.
 and the script, so these runs can be repeated.
 
 Submitted to the two builders CRAN maintainers are asked to use before
-submission:
+submission, and checked on the five platforms GitHub Actions offers:
 
-* win-builder, R-devel and R-release
-* macOS builder (results at
-  <https://mac.R-project.org/macbuilder/results/1789523532-c226e687bd0b878b/>)
+* win-builder, R-devel: 1 NOTE, the new submission one.
+* win-builder, R 4.6.1: submitted.
+* macOS builder: builds.
+* GitHub Actions, R-CMD-check on macOS, Windows and Ubuntu at release, devel
+  and oldrel-1: all pass.
+
+The first win-builder run reported the `drbayes_pc` examples at 18.6 seconds
+against the 10 second guidance. They run in 5.5 seconds on the development
+machine, so the margin was not visible locally; they have been reduced, and
+the one that supplies draws from elsewhere, the most expensive on the page,
+moved to `\donttest`. What is timed now takes 1.7 seconds here, and the
+subsequent R-devel run reports no examples NOTE.
 
 ## R CMD check results
 
