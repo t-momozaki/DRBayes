@@ -1,0 +1,28 @@
+^DRBayes\.Rproj$
+^\.Rproj\.user$
+^\.Rhistory$
+^\.RData$
+^\.Rprofile$
+^\.gitignore$
+^README\.html$
+^archive$
+^doc$
+^Meta$
+^renv$
+^renv\.lock$
+^LICENSE\.md$
+^scripts$
+^data-raw$
+^cran-comments\.md$
+^docs$
+^\.github$
+^Rplots\.pdf$
+^src/.*\.(o|so|dylib|dll)$
+^tools$
+^_pkgdown\.yml$
+^DRBayes.*\.tar\.gz$
+^DRBayes\.Rcheck$
+# iCloud sync leaves conflict copies, 'tilting 2.R' beside 'tilting.R',
+# among the sources. One of those in R/ ships and is sourced at install.
+^.* [0-9]+\.[A-Za-z]+$
+^.* \([0-9]+\)\.[A-Za-z]+$

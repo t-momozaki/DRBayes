@@ -1,48 +1,51 @@
-citHeader("To cite DRBayes in publications use:")
+## Version used in the package (Manual) citation. `meta` is supplied by
+## utils::citation(); fall back gracefully when the file is sourced directly.
+pkg_version <- if (exists("meta") && !is.null(meta) && !is.null(meta$Version)) {
+  meta$Version
+} else {
+  NA_character_
+}
+version_note <- if (is.na(pkg_version)) {
+  "R package, development version"
+} else {
+  paste("R package version", pkg_version)
+}
 
-citEntry(
-  entry    = "Article",
-  title    = "Bayesian Doubly Robust Causal Inference via Posterior Coupling",
-  author   = "Shunichiro Orihara and Tomotaka Momozaki and Shonosuke Sugasawa",
-  journal  = "arXiv preprint",
-  year     = "2025",
-  note     = "arXiv:2506.04868",
-  url      = "https://arxiv.org/abs/2506.04868",
+pkg_authors <- c(
+  person("Shunichiro", "Orihara"),
+  person("Tomotaka", "Momozaki"),
+  person("Shonosuke", "Sugasawa")
+)
+
+bibentry(
+  bibtype = "Article",
+  key     = "orihara2025bayesian",
+  title   = "Bayesian Doubly Robust Causal Inference via Posterior Coupling",
+  author  = pkg_authors,
+  journal = "arXiv preprint arXiv:2506.04868",
+  year    = "2025",
+  doi     = "10.48550/arXiv.2506.04868",
+  url     = "https://arxiv.org/abs/2506.04868",
   textVersion = paste(
     "Orihara, S., Momozaki, T., & Sugasawa, S. (2025).",
     "Bayesian Doubly Robust Causal Inference via Posterior Coupling.",
     "arXiv preprint arXiv:2506.04868.",
-    "URL https://arxiv.org/abs/2506.04868"
+    "doi:10.48550/arXiv.2506.04868"
   )
 )
 
-citEntry(
-  entry    = "Manual",
-  title    = "DRBayes: Bayesian Doubly Robust Causal Inference Methods",
-  author   = "Tomotaka Momozaki",
-  year     = "2025",
-  note     = "R package version 0.1.0",
-  url      = "https://github.com/t-momozaki/DRBayes",
-  textVersion = paste(
-    "Momozaki, T. (2025).",
-    "DRBayes: Bayesian Doubly Robust Causal Inference Methods.",
-    "R package version 0.1.0.",
+bibentry(
+  bibtype = "Manual",
+  key     = "drbayes-package",
+  title   = "DRBayes: Bayesian Doubly Robust Causal Inference Methods",
+  author  = pkg_authors,
+  year    = "2025",
+  note    = version_note,
+  url     = "https://github.com/t-momozaki/DRBayes",
+  textVersion = paste0(
+    "Orihara, S., Momozaki, T., & Sugasawa, S. (2025). ",
+    "DRBayes: Bayesian Doubly Robust Causal Inference Methods. ",
+    version_note, ". ",
     "https://github.com/t-momozaki/DRBayes"
   )
 )
-
-citFooter("\nA BibTeX entry for LaTeX users is:\n\n",
-          "@Article{orihara2025bayesian,\n",
-          "  title={Bayesian Doubly Robust Causal Inference via Posterior Coupling},\n",
-          "  author={Orihara, Shunichiro and Momozaki, Tomotaka and Sugasawa, Shonosuke},\n",
-          "  journal={arXiv preprint arXiv:2506.04868},\n",
-          "  year={2025},\n",
-          "  url={https://arxiv.org/abs/2506.04868}\n",
-          "}\n\n",
-          "@Manual{momozaki2025drbayes,\n",
-          "  title={DRBayes: Bayesian Doubly Robust Causal Inference Methods},\n",
-          "  author={Momozaki, Tomotaka},\n",
-          "  year={2025},\n",
-          "  note={R package version 0.1.0},\n",
-          "  url={https://github.com/yourusername/DRBayes}\n",
-          "}")

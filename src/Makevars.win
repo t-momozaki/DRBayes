@@ -1,0 +1,5 @@
+# Armadillo reaches the same BLAS and LAPACK that R itself uses, so the matrix
+# products here are the ones R would have made. Nothing else is set: an
+# optimisation or architecture flag would either be redundant with R's own or
+# would make the build unreproducible across the platforms CRAN tests on.
+PKG_LIBS = $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)

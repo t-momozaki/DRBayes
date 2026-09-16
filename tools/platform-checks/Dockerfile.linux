@@ -1,0 +1,19 @@
+# A Linux R that accumulates in long double, which this Mac does not: the wide
+# branch of the reduction templates is never selected on aarch64 macOS, so it
+# has never run. The BLAS differs too, which is the other thing the bit-identity
+# claim rests on.
+FROM r-base:latest
+
+# fs, which testthat reaches through pkgload, is the only package here that
+# needs anything from the system.
+RUN apt-get update && apt-get install -y --no-install-recommends libuv1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN Rscript -e 'install.packages(c("Rcpp","RcppArmadillo","testthat","future", \
+      "furrr","extraDistr","RcppTN","pgdraw","mvtnorm"), \
+      Ncpus = 6, repos = "https://cloud.r-project.org")' \
+ && Rscript -e 'need <- c("Rcpp","RcppArmadillo","testthat","future","furrr", \
+      "extraDistr","RcppTN","pgdraw","mvtnorm"); \
+      missing <- setdiff(need, rownames(installed.packages())); \
+      if (length(missing)) stop("missing: ", toString(missing)); \
+      cat("all dependencies present\n")'

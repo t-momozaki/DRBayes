@@ -1,10 +1,13 @@
 # DRBayes: Bayesian Doubly Robust Causal Inference via Posterior Coupling
 
 <!-- badges: start -->
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/license/mit)
 [![R](https://img.shields.io/badge/R-%E2%89%A5%203.5.0-blue.svg)](https://www.r-project.org/)
 [![Development](https://img.shields.io/badge/Status-Development-orange.svg)](https://github.com/t-momozaki/DRBayes)
 <!-- badges: end -->
+
+Reference documentation and articles:
+<https://t-momozaki.github.io/DRBayes/>
 
 ## Overview
 
@@ -36,24 +39,21 @@ devtools::install_github("t-momozaki/DRBayes", build_vignettes = TRUE)
 
 ### Dependencies
 
-DRBayes requires the following R packages:
+DRBayes installs the following R packages, all of them from CRAN:
 
-**Core dependencies:**
-- `MCMCpack` (Dirichlet random numbers)
+- `Rcpp` and `RcppArmadillo` (the compiled moment conditions)
 - `mvtnorm` (Multivariate normal sampling)
-- `stats`, `base` (Standard R functions)
-
-**Model-specific dependencies:**
 - `extraDistr` (Inverse gamma distribution)
 - `RcppTN` (Truncated normal sampling for probit models)
-- `pgdraw` (Pólya-Gamma sampling for logistic models)
+- `pgdraw` (Polya-Gamma sampling for logistic models)
+- `future`, `furrr` (Parallel replication in `run_parallel_simulation()`)
+- `stats`, `graphics`, `utils` (Standard R functions)
 
-**Optional for enhanced functionality:**
-- `future`, `furrr`, `parallelly` (Parallel processing for simulations)
-- `nleqslv` (Equation solving)
-- `cmdstanr` (Stan integration)
-- `brms` (High-level Bayesian modeling)
-- `R2jags` (JAGS integration)
+**Optional.** `cmdstanr` and `instantiate` are needed only by `bayes_stan()`,
+which fits the same six models with Stan instead of the built-in Gibbs
+samplers; `ggplot2` and `dplyr` only by the vignettes. Posterior draws from
+Stan, brms, JAGS or any other software can be passed to `drbayes_pc()` as a
+matrix, which needs none of those packages installed.
 
 ## Quick Start
 
@@ -79,13 +79,13 @@ data$A <- rbinom(n, 1, plogis(0.2 + 0.5*data$X1 - 0.3*data$X2))
 data$Y <- 1 + 1.5*data$A + 0.8*data$X1 + 0.6*data$X2 + 0.4*data$A*data$X1 + rnorm(n)
 
 # Fit Bayesian doubly robust model using formula interface
-result_continuous <- DRBayes.PC(
+result_continuous <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2 + A:X1,      # Outcome model with interaction
   ps.formula = A ~ X1 + X2 + X3,                 # Propensity score model
   data = data,
   family = "gaussian",                           # Auto-detected if NULL
-  outcome.model = B.LM,                          # Bayesian linear regression
-  ps.model = B.Logit,                            # Bayesian logistic regression
+  outcome.model = bayes_lm,                          # Bayesian linear regression
+  ps.model = bayes_logit,                            # Bayesian logistic regression
   mc = 3000, bn = 1000, thin = 2
 )
 
@@ -105,13 +105,13 @@ cat("G-computation ATE:", round(mean(result_continuous$g.comp), 3), "\n")
 data$Y_binary <- rbinom(n, 1, plogis(0.5 + 0.8*data$A + 0.4*data$X1 + 0.3*data$X2))
 
 # Fit model with automatic family/link detection
-result_binary <- DRBayes.PC(
+result_binary <- drbayes_pc(
   outcome.formula = Y_binary ~ A + X1 + X2,
   ps.formula = A ~ X1 + X2 + X3,
   data = data,
   # family and link auto-detected as "binomial" and "logit"
-  outcome.model = B.Logit,
-  ps.model = B.Logit,
+  outcome.model = bayes_logit,
+  ps.model = bayes_logit,
   mc = 3000, bn = 1000, thin = 2
 )
 
@@ -135,18 +135,24 @@ names(data_hd) <- paste0("X", 1:p)
 data_hd$A <- rbinom(n, 1, plogis(0.3*data_hd$X1 + 0.2*data_hd$X2 - 0.1*data_hd$X3))
 data_hd$Y <- 2 + 1.5*data_hd$A + 0.8*data_hd$X1 + 0.5*data_hd$X2 + rnorm(n)
 
-# Use horseshoe priors for regularization
-result_horseshoe <- DRBayes.PC(
+# Use horseshoe priors for regularization. The treatment main effect and its
+# interactions are exempt from shrinkage automatically.
+result_horseshoe <- drbayes_pc(
   outcome.formula = Y ~ A + .,  # Include all covariates
   ps.formula = A ~ . - Y,       # All covariates except outcome
   data = data_hd,
-  outcome.model = HS.LM,        # Horseshoe linear regression
-  ps.model = HS.Logit,          # Horseshoe logistic regression
+  outcome.prior = "horseshoe",
+  ps.prior = "horseshoe",
   mc = 2000, bn = 500, thin = 2
 )
 
 cat("Horseshoe ATE:", round(mean(result_horseshoe$pc), 3), "\n")
 ```
+
+The horseshoe logistic sampler mixes slowly on 50 covariates and 200
+observations, so this short run warns that the propensity score model has not
+met `R-hat < 1.01`. That is the check doing its job; `result_horseshoe$diagnostics`
+names the coefficients, and raising `mc` is the remedy.
 
 ### Example 4: Advanced Formula Usage and Missing Data
 
@@ -157,18 +163,18 @@ data_missing$X1[sample(n, 20)] <- NA
 data_missing$X2[sample(n, 15)] <- NA
 
 # Complex formulas with transformations and polynomials
-result_advanced <- DRBayes.PC(
+result_advanced <- drbayes_pc(
   outcome.formula = Y ~ A + log(abs(X1) + 1) + I(X2^2) + poly(X3, 2) + A:X1,
   ps.formula = A ~ X1 + X2 + X3 + I(X1^2) + X2:X3,
   data = data_missing,
   na.action = "na.omit",                         # Handle missing values
-  outcome.model = B.LM,
-  ps.model = B.Logit,
+  outcome.model = bayes_lm,
+  ps.model = bayes_logit,
   mc = 2000, bn = 500
 )
 
 cat("Original sample size:", n, "\n")
-cat("Effective sample size:", result_advanced$data_info$n_observations, "\n")
+cat("Analysis sample size:", result_advanced$data_info$n_observations, "\n")
 cat("Missing observations:", result_advanced$data_info$missing_observations, "\n")
 cat("Advanced formula ATE:", round(mean(result_advanced$pc), 3), "\n")
 ```
@@ -176,21 +182,15 @@ cat("Advanced formula ATE:", round(mean(result_advanced$pc), 3), "\n")
 ### Example 5: Bayesian Bootstrap Alternative
 
 ```r
-# Alternative: Bayesian Bootstrap approach (Saarela et al. 2016)
-X.lm <- data.frame(
-  A = data$A,
-  X1 = data$X1, X2 = data$X2, X3 = data$X3,
-  A_X1 = data$A * data$X1  # Treatment-covariate interaction
-)
-X.ps <- data.frame(X1 = data$X1, X2 = data$X2, X3 = data$X3)
-
-result_bb <- DRBayes.BB(
-  Y = data$Y,
-  A = data$A,
-  X.lm = X.lm,
-  X.ps = X.ps,
-  num_iterations = 1000,
-  family = "gaussian"
+# Alternative: Bayesian Bootstrap approach (Saarela et al. 2016).
+# Note that this targets Saarela's mixed estimand rather than the
+# superpopulation ATE; see ?drbayes_bb.
+result_bb <- drbayes_bb(
+  outcome.formula = Y ~ A + X1 + X2 + X3 + A:X1,
+  ps.formula      = A ~ X1 + X2 + X3,
+  data            = data,
+  num_iterations  = 1000,
+  family          = "gaussian"
 )
 
 cat("Bayesian Bootstrap ATE:", round(mean(result_bb), 3), "\n")
@@ -200,25 +200,41 @@ cat("Bayesian Bootstrap ATE:", round(mean(result_bb), 3), "\n")
 
 ### Core Functions
 
-- **`DRBayes.PC()`**: Main function for Bayesian doubly robust estimation via posterior coupling with formula interface
-- **`DRBayes.BB()`**: Bayesian bootstrap approach (Saarela et al. 2016)
+- **`drbayes_pc()`**: Main function for Bayesian doubly robust estimation via posterior coupling with formula interface
+- **`drbayes_bb()`**: Bayesian bootstrap approach (Saarela et al. 2016)
+- **`drbayes_control()`**: Tuning parameters for the sequential Monte Carlo sweep and the convergence check
+- **`drbayes_sensitivity()`**: Sensitivity analysis for unmeasured confounding. Reweights the draws of an existing fit and couples them again; no model is refitted
+- **`drbayes_select()`**: Confounder selection on the propensity score model under shrinkage priors, followed by posterior coupling on the selected set
 
 ### Built-in Model Functions
 
-**Standard Priors:**
-- **`B.LM()`**: Bayesian linear regression with conjugate priors (for continuous outcomes)
-- **`B.Logit()`**: Bayesian logistic regression using Pólya-Gamma data augmentation (for binary outcomes/treatment)
-- **`B.Probit()`**: Bayesian probit regression using latent variable approach (for binary outcomes/treatment)
+These are the samplers `drbayes_pc()` chooses between. Call them directly only
+when you want the draws for their own sake, or want to hand a sampler the main
+function does not provide.
+
+**Normal priors:**
+- **`bayes_lm()`**: Bayesian linear regression with conjugate priors (for continuous outcomes)
+- **`bayes_logit()`**: Bayesian logistic regression using Polya-Gamma data augmentation (for binary outcomes/treatment)
+- **`bayes_probit()`**: Bayesian probit regression using latent variable approach (for binary outcomes/treatment)
 
 **Horseshoe Priors (for high-dimensional data):**
-- **`HS.LM()`**: Horseshoe prior linear regression
-- **`HS.Logit()`**: Horseshoe prior logistic regression
-- **`HS.Probit()`**: Horseshoe prior probit regression
+- **`bayes_lm_hs()`**: Horseshoe prior linear regression
+- **`bayes_logit_hs()`**: Horseshoe prior logistic regression
+- **`bayes_probit_hs()`**: Horseshoe prior probit regression
+
+**Stan backend:**
+- **`bayes_stan()`**: Fits any of the six models above with CmdStan and returns draws in the same layout. Requires `cmdstanr` and CmdStan, so it is never the default.
+
+### Diagnostics
+
+- **`convergence_diagnostics()`**: Rank-normalised split R-hat, bulk and tail effective sample size, and Monte Carlo standard error (Vehtari et al. 2021)
+- **`rank_plot()`**: Rank histograms, the paper's replacement for trace plots
 
 ### Simulation and Utility Functions
 
 - **`generate_dataset()`**: Generate synthetic datasets for simulation studies
 - **`run_parallel_simulation()`**: Run parallel simulation studies
+- **`convert_to_array()`**: Collect the output of `run_parallel_simulation()` into an array
 
 ## Outcome Types and Model Families 
 
@@ -227,12 +243,12 @@ DRBayes supports multiple outcome types with automatic detection:
 | Family | Link Function | Outcome Type | Use Case | Auto-Detection |
 |--------|---------------|--------------|----------|----------------|
 | `"gaussian"` | `"identity"` | Continuous | Linear regression, mean differences | Non-binary Y values |
-| `"binomial"` | `"logit"` | Binary (0/1) | Logistic regression, probability differences | All Y ∈ {0,1} |
+| `"binomial"` | `"logit"` | Binary (0/1) | Logistic regression, probability differences | All Y in {0,1} |
 | `"binomial"` | `"probit"` | Binary (0/1) | Probit regression, probability differences | Manual specification |
 
 **Automatic Detection**: When `family = NULL` (default), the function automatically detects the appropriate family:
-- If all Y values are 0 or 1 → `family = "binomial"`, `link = "logit"`
-- Otherwise → `family = "gaussian"`, `link = "identity"`
+- If all Y values are 0 or 1, `family = "binomial"` and `link = "logit"`
+- Otherwise, `family = "gaussian"` and `link = "identity"`
 
 ## Formula Interface Features
 
@@ -241,7 +257,7 @@ The formula interface provides several advantages:
 ### Intuitive Syntax
 ```r
 # Similar to lm() and glm() - familiar to R users
-DRBayes.PC(
+drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2 + A:X1,
   ps.formula = A ~ X1 + X2 + X3,
   data = data
@@ -273,14 +289,15 @@ DRBayes supports posterior samples from popular Bayesian software with the formu
 outcome_samples <- fit_stan$draws("beta", format = "matrix")
 ps_samples <- fit_stan$draws("gamma", format = "matrix")
 
-# Use with formula interface
-result <- DRBayes.PC(
+# Use with formula interface. Stan has already discarded its warm-up draws,
+# so there is no burn-in left for DRBayes to remove: bn = 0.
+result <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2 + A:X1,
   ps.formula = A ~ X1 + X2 + X3,
   data = data,
   outcome.samples = outcome_samples,
   ps.samples = ps_samples,
-  bn = 100, thin = 2
+  bn = 0, thin = 1
 )
 ```
 
@@ -291,7 +308,7 @@ result <- DRBayes.PC(
 outcome_samples <- as.matrix(brms_fit)[, 1:ncol(model.matrix(outcome.formula, data))]
 ps_samples <- as.matrix(brms_ps_fit)[, 1:ncol(model.matrix(ps.formula, data))]
 
-result <- DRBayes.PC(
+result <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2,
   ps.formula = A ~ X1 + X2 + X3,
   data = data,
@@ -307,7 +324,7 @@ result <- DRBayes.PC(
 outcome_samples <- jags_fit$BUGSoutput$sims.matrix[, grep("beta", colnames(...))]
 ps_samples <- jags_fit$BUGSoutput$sims.matrix[, grep("gamma", colnames(...))]
 
-result <- DRBayes.PC(
+result <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2,
   ps.formula = A ~ X1 + X2 + X3,
   data = data,
@@ -318,16 +335,36 @@ result <- DRBayes.PC(
 
 ## Prior Specification
 
-Customize priors through the built-in model functions:
+Given the family and the link, the sampling algorithm follows, so the only
+choice left is the prior. `outcome.prior` and `ps.prior` make it, and no
+sampler has to be named:
+
+```r
+# Normal priors (the default) on both models
+result <- drbayes_pc(Y ~ A + X1 + X2, A ~ X1 + X2 + X3, data = data)
+
+# Horseshoe on both models, for many candidate confounders. The treatment
+# effect and its interactions are exempt from shrinkage automatically.
+result_hs <- drbayes_pc(
+  outcome.formula = Y ~ A + .,
+  ps.formula = A ~ . - Y,
+  data = data_hd,
+  outcome.prior = "horseshoe",
+  ps.prior = "horseshoe"
+)
+```
+
+The hyperparameters of whichever sampler is chosen are set through
+`outcome.priors` and `ps.priors`:
 
 ```r
 # Custom priors for internal sampling
-result <- DRBayes.PC(
+result <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2,
   ps.formula = A ~ X1 + X2 + X3,
   data = data,
-  outcome.model = B.LM,
-  ps.model = B.Logit,
+  outcome.model = bayes_lm,
+  ps.model = bayes_logit,
   outcome.priors = list(
     theta_prior = 1/50,        # Prior precision for coefficients
     sigma_prior = c(2, 1)      # Inverse gamma prior for error variance
@@ -338,12 +375,12 @@ result <- DRBayes.PC(
 )
 
 # Horseshoe priors with custom tau
-result_hs <- DRBayes.PC(
+result_hs <- drbayes_pc(
   outcome.formula = Y ~ A + .,
   ps.formula = A ~ . - Y,
   data = data_hd,
-  outcome.model = HS.LM,
-  ps.model = HS.Logit,
+  outcome.model = bayes_lm_hs,
+  ps.model = bayes_logit_hs,
   outcome.priors = list(
     tau_prior = 1/sqrt(ncol(data_hd))  # Custom global shrinkage
   ),
@@ -374,12 +411,12 @@ browseVignettes("DRBayes")
 
 ```r
 # Main function help
-?DRBayes.PC
+?drbayes_pc
 
 # Model functions
-?B.LM
-?B.Logit
-?HS.LM
+?bayes_lm
+?bayes_logit
+?bayes_lm_hs
 
 # Package overview
 help(package = "DRBayes")
@@ -390,16 +427,16 @@ help(package = "DRBayes")
 The posterior coupling approach implemented in DRBayes addresses key limitations of traditional doubly robust methods:
 
 1. **Separate Model Fitting**: Outcome and propensity score models are fit independently using the formula interface
-2. **Moment Condition Enforcement**: Sequential Monte Carlo enforces the doubly robust moment condition
+2. **Moment Condition Enforcement**: The joint posterior is tilted by `exp(lambda * B_n)` until the posterior mean of the moment condition is zero. `method = "smc"` (the default) walks a grid of tilting parameters and rejuvenates the particles at each step, which is Algorithm 2 of the paper; `method = "is"` takes a single importance sampling step, which is Algorithm 1
 3. **Coupled Posterior**: Results in a posterior distribution that satisfies the doubly robust property
 
 The method enforces the moment condition:
 
-$$E\left[\frac{(A - \pi(X)) \cdot (Y - \mu(X))}{\pi(X)(1-\pi(X))}\right] = 0$$
+$$E\left[\frac{(A - \pi(X)) \cdot (Y - m_A(X))}{\pi(X)(1-\pi(X))}\right] = 0$$
 
-where $\pi(X)$ is the propensity score and $\mu(X)$ is the outcome model.
+where $\pi(X)$ is the propensity score and $m_A(X)$ is the outcome model evaluated at the observed treatment.
 
-**For binary outcomes**: $\mu(X)$ represents the predicted probability using the specified link function, and the ATE represents the average probability difference between treatment and control groups.
+**For binary outcomes**: $m_A(X)$ represents the predicted probability using the specified link function, and the ATE represents the average probability difference between treatment and control groups.
 
 ## Citation
 
@@ -433,23 +470,32 @@ If you use DRBayes in your research, please cite:
 
 1. **Convergence problems**: Increase `mc` or adjust priors
 2. **Extreme propensity scores**: Check for positivity violations
-3. **High-dimensional data**: Use horseshoe priors (`HS.*` functions)
+3. **High-dimensional data**: Use `outcome.prior = "horseshoe"` and `ps.prior = "horseshoe"`
 4. **Missing data**: Use `na.action = "na.omit"` or preprocess data
 
 ### Diagnostic Tools
 
 ```r
-# Check posterior samples
-plot(result$pc, type = "l")  # Trace plot
-hist(result$pc)              # Posterior distribution
+# Both estimands, their credible intervals, the tilting parameter, whether
+# the moment condition was met, and the worst R-hat and ESS of the two models
+print(result)
+summary(result)
 
-# Compare methods
-cat("PC ATE:", mean(result$pc), "\n")
-cat("G-comp ATE:", mean(result$g.comp), "\n")
+# The two posterior densities
+plot(result)
+
+# The full convergence table, one row per coefficient of each model
+result$diagnostics
 
 # Data diagnostics
 print(result$data_info)
 ```
+
+R-hat and effective sample size are reported for the Markov chain draws of the
+outcome and propensity score models, which is where they apply. They are not
+reported for `result$pc`: those are sequential Monte Carlo particles, which are
+resampled and carry no time ordering, so a trace plot or an autocorrelation
+based effective sample size computed on them would be estimating nothing.
 
 ## Reporting Issues
 
@@ -457,10 +503,10 @@ If you encounter bugs or have feature requests, please file an issue on our [Git
 
 ## Related Packages
 
-- [`AIPW`](https://cran.r-project.org/package=AIPW): Augmented inverse probability weighting
-- [`tmle`](https://cran.r-project.org/package=tmle): Targeted maximum likelihood estimation
-- [`CausalInference`](https://cran.r-project.org/package=CausalInference): Various causal inference methods
-- [`MatchIt`](https://cran.r-project.org/package=MatchIt): Matching methods for causal inference
+- [`AIPW`](https://CRAN.R-project.org/package=AIPW): Augmented inverse probability weighting
+- [`tmle`](https://CRAN.R-project.org/package=tmle): Targeted maximum likelihood estimation
+- [`bartCause`](https://CRAN.R-project.org/package=bartCause): Bayesian causal inference with BART
+- [`MatchIt`](https://CRAN.R-project.org/package=MatchIt): Matching methods for causal inference
 
 ## Authors
 
@@ -470,7 +516,7 @@ If you encounter bugs or have feature requests, please file an issue on our [Git
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) file for details.
 
 ## Acknowledgments
 

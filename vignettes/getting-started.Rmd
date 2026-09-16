@@ -14,6 +14,9 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
+# ggplot2 is a Suggests-only dependency, so the figures are conditional on it.
+has_ggplot2 <- requireNamespace("ggplot2", quietly = TRUE)
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -51,7 +54,7 @@ The **DRBayes** package implements Bayesian doubly robust causal inference metho
 library(DRBayes)
 
 # Load additional packages for visualization
-library(ggplot2)
+if (has_ggplot2) library(ggplot2)
 ```
 
 # Basic Concepts
@@ -83,11 +86,38 @@ DRBayes supports different outcome types through the `family` and `link` paramet
 
 ## Posterior Coupling Approach
 
-Traditional DR methods can suffer from the "feedback problem" where the two models influence each other in undesirable ways. The posterior coupling approach in DRBayes:
+A Bayesian doubly robust estimator has to get propensity score information into
+the analysis somehow, and the two obvious ways both cost something. Putting the
+propensity score in the outcome likelihood lets outcome information flow back
+into the propensity score, which is the *feedback problem*: the estimated score
+can stop adjusting for confounding. Estimating the score first and conditioning
+on it afterwards, *cutting feedback*, avoids that but no longer produces a
+posterior distribution in the ordinary sense.
 
-- Generates posterior samples from both models separately
-- Uses sequential Monte Carlo to enforce the DR moment condition
-- Produces a coupled posterior that satisfies the DR property
+Posterior coupling takes a third route. The two models are fitted
+independently, so neither contaminates the other, and the propensity score
+information enters afterwards by *entropic tilting*: the joint posterior is
+reweighted, as little as it can be in Kullback-Leibler terms, until the doubly
+robust moment condition holds in posterior expectation. The result is an
+explicit posterior distribution.
+
+That is what the two sets of draws a fit returns are:
+
+- **`g.comp`** is the untilted Bayesian g-formula posterior. It uses the
+  outcome model alone. If the outcome model is right, this is already a valid
+  posterior for the average treatment effect, and it is what you would get
+  without any of the machinery below.
+- **`pc`** is the same quantity after tilting. The tilt is governed by a single
+  number, `lambda`, found by the sweep. At `lambda = 0` the two are the same
+  set of draws.
+
+Lemma 1 of the paper says that when the outcome model is correctly specified
+the tilting is not needed: the moment condition is already satisfied in
+expectation, so `lambda` is near zero and `pc` is close to `g.comp`. Theorem 1
+says that when the outcome model is *wrong* but the propensity score model is
+right, the posterior mean of `pc` is still consistent, which `g.comp` is not.
+The two agreeing is therefore not a sign that nothing happened; it is what a
+well specified outcome model looks like.
 
 ## Formula Interface
 
@@ -109,7 +139,7 @@ Let's start with a continuous outcome example using simulated data:
 set.seed(1234)
 
 # Sample size
-n <- 2000
+n <- 400
 
 # Create a data frame with all variables
 data <- data.frame(
@@ -144,16 +174,16 @@ cat("  Treatment prevalence:", round(mean(data$A), 3), "\n")
 
 ```{r model-fitting-continuous}
 # Fit the model using the formula interface
-result_continuous <- DRBayes.PC(
+result_continuous <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2 + X3 + A:X1,  # Outcome model with interaction
   ps.formula = A ~ X1 + X2 + X3,                  # Propensity score model
   data = data,
   family = "gaussian",                            # For continuous outcomes
   link = "identity",                              # Identity link (default)
-  outcome.model = B.LM,                           # Bayesian linear regression
-  ps.model = B.Logit,                             # Bayesian logistic regression
-  mc = 5000,                                      # MCMC iterations
-  bn = 1000,                                      # Burn-in
+  outcome.model = bayes_lm,                           # Bayesian linear regression
+  ps.model = bayes_logit,                             # Bayesian logistic regression
+  mc = 1200,                                      # MCMC iterations
+  bn = 300,                                       # Burn-in
   thin = 2,                                       # Thinning
   outcome.priors = list(
     theta_prior = 1/100,                          # Prior precision for regression coefficients
@@ -174,14 +204,14 @@ cat("Link function:", result_continuous$link, "\n")
 
 ```{r auto-detection-continuous}
 # DRBayes can automatically detect the outcome type
-result_auto_continuous <- DRBayes.PC(
+result_auto_continuous <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2 + X3 + A:X1,
   ps.formula = A ~ X1 + X2 + X3,
   data = data,
   # family and link not specified - will be auto-detected
-  outcome.model = B.LM, 
-  ps.model = B.Logit,
-  mc = 1000, bn = 200, thin = 2
+  outcome.model = bayes_lm, 
+  ps.model = bayes_logit,
+  mc = 1200, bn = 300, thin = 2
 )
 
 cat("Auto-detected family:", result_auto_continuous$family, "\n")
@@ -198,7 +228,7 @@ Now let's create a binary outcome example:
 ```{r data-generation-binary}
 # Create new data for binary outcome
 set.seed(5678)
-n <- 2000
+n <- 400
 
 data_binary <- data.frame(
   X1 = rnorm(n),
@@ -232,41 +262,41 @@ cat("  Observed difference:", round(mean(data_binary$Y[data_binary$A==1]) - mean
 
 ```{r model-fitting-binary}
 # Fit logistic model - will be auto-detected
-result_binary_auto <- DRBayes.PC(
+result_binary_auto <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2 + X3,
   ps.formula = A ~ X1 + X2 + X3,
   data = data_binary,
-  # Auto-detection: all Y values are 0/1 → binomial family with logit link
-  outcome.model = B.Logit,
-  ps.model = B.Logit,
-  mc = 5000, bn = 1000, thin = 2
+  # Auto-detection: all Y values are 0/1, so binomial family with logit link
+  outcome.model = bayes_logit,
+  ps.model = bayes_logit,
+  mc = 1200, bn = 300, thin = 2
 )
 
 cat("Auto-detected family:", result_binary_auto$family, "\n")
 cat("Auto-detected link:", result_binary_auto$link, "\n")
 
 # Fit with explicit specification
-result_binary_logit <- DRBayes.PC(
+result_binary_logit <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2 + X3,
   ps.formula = A ~ X1 + X2 + X3,
   data = data_binary,
   family = "binomial",
   link = "logit",
-  outcome.model = B.Logit,
-  ps.model = B.Logit,
-  mc = 5000, bn = 1000, thin = 2
+  outcome.model = bayes_logit,
+  ps.model = bayes_logit,
+  mc = 1200, bn = 300, thin = 2
 )
 
 # Fit with probit link
-result_binary_probit <- DRBayes.PC(
+result_binary_probit <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2 + X3,
   ps.formula = A ~ X1 + X2 + X3,
   data = data_binary,
   family = "binomial",
   link = "probit",
-  outcome.model = B.Probit,
-  ps.model = B.Logit,
-  mc = 5000, bn = 1000, thin = 2
+  outcome.model = bayes_probit,
+  ps.model = bayes_logit,
+  mc = 1200, bn = 300, thin = 2
 )
 
 cat("Binary outcome models completed!\n")
@@ -302,14 +332,14 @@ data_advanced$Y <- 2 + 1.2*data_advanced$A +
                    rnorm(n, 0, 0.8)
 
 # Fit with complex formulas
-result_advanced <- DRBayes.PC(
+result_advanced <- drbayes_pc(
   outcome.formula = Y ~ A + log(X1) + I(X2^2) + X3 + poly(X4, 2) + A:X1,
   ps.formula = A ~ X1 + X2 + X3 + I(X2^2) + X3:X4,
   data = data_advanced,
   family = "gaussian",
-  outcome.model = B.LM,
-  ps.model = B.Logit,
-  mc = 2000, bn = 500, thin = 2
+  outcome.model = bayes_lm,
+  ps.model = bayes_logit,
+  mc = 1200, bn = 300, thin = 2
 )
 
 cat("Advanced formula model completed!\n")
@@ -331,14 +361,14 @@ cat("Missing values in X1:", length(missing_indices_x1), "\n")
 cat("Missing values in X2:", length(missing_indices_x2), "\n")
 
 # Fit model with missing data using na.omit
-result_missing <- DRBayes.PC(
+result_missing <- drbayes_pc(
   outcome.formula = Y ~ A + X1 + X2 + X3,
   ps.formula = A ~ X1 + X2 + X3,
   data = data_missing,
   na.action = "na.omit",
-  outcome.model = B.LM,
-  ps.model = B.Logit,
-  mc = 2000, bn = 500, thin = 2
+  outcome.model = bayes_lm,
+  ps.model = bayes_logit,
+  mc = 1200, bn = 300, thin = 2
 )
 
 cat("After handling missing data:\n")
@@ -377,23 +407,23 @@ outcome_formula_hd <- as.formula(paste("Y ~ A +", paste(covariate_names, collaps
 ps_formula_hd <- as.formula(paste("A ~", paste(covariate_names, collapse = " + ")))
 
 # Standard priors (might overfit)
-result_standard <- DRBayes.PC(
+result_standard <- drbayes_pc(
   outcome.formula = outcome_formula_hd,  # Include all covariates
   ps.formula = ps_formula_hd,            # All covariates except A and Y
   data = data_hd,
-  outcome.model = B.LM,
-  ps.model = B.Logit,
-  mc = 5000, bn = 1000, thin = 2
+  outcome.model = bayes_lm,
+  ps.model = bayes_logit,
+  mc = 1200, bn = 300, thin = 2
 )
 
 # Horseshoe priors for regularization
-result_horseshoe <- DRBayes.PC(
+result_horseshoe <- drbayes_pc(
   outcome.formula = outcome_formula_hd,
   ps.formula = ps_formula_hd,
   data = data_hd,
-  outcome.model = HS.LM,        # Horseshoe linear regression
-  ps.model = HS.Logit,          # Horseshoe logistic regression
-  mc = 5000, bn = 1000, thin = 2
+  outcome.model = bayes_lm_hs,        # Horseshoe linear regression
+  ps.model = bayes_logit_hs,          # Horseshoe logistic regression
+  mc = 1200, bn = 300, thin = 2
 )
 
 cat("High-dimensional results:\n")
@@ -445,14 +475,19 @@ summarize_results(result_binary_probit$pc, "Posterior Coupling (Probit)", true_a
 
 ## Posterior Distributions
 
-```{r posterior-plots, fig.width=12, fig.height=8}
-# Create data frame for plotting
+```{r posterior-plots, fig.width=12, fig.height=8, eval = has_ggplot2}
+# Create data frame for plotting. Each label has to repeat once per draw, not
+# once per group, or the four sets of draws are interleaved into one another.
+draws <- list(result_continuous$g.comp, result_continuous$pc,
+              result_binary_logit$g.comp, result_binary_logit$pc)
+n_draws <- lengths(draws)
+
 plot_data <- data.frame(
-  ATE = c(result_continuous$g.comp, result_continuous$pc,
-          result_binary_logit$g.comp, result_binary_logit$pc),
-  Method = rep(c("G-computation", "Posterior Coupling"), 2),
-  Outcome_Type = rep(c("Continuous", "Continuous", "Binary", "Binary"), 
-                     each = length(result_continuous$g.comp))
+  ATE = unlist(draws),
+  Method = rep(c("G-computation", "Posterior Coupling",
+                 "G-computation", "Posterior Coupling"), times = n_draws),
+  Outcome_Type = rep(c("Continuous", "Continuous", "Binary", "Binary"),
+                     times = n_draws)
 )
 
 # Create faceted density plot
@@ -479,7 +514,7 @@ print(p1)
 
 ## Link Function Comparison (Binary Outcomes)
 
-```{r link-comparison-plot, fig.width=10, fig.height=6}
+```{r link-comparison-plot, fig.width=10, fig.height=6, eval = has_ggplot2}
 # Compare logit vs probit for binary outcomes
 link_data <- data.frame(
   ATE = c(result_binary_logit$pc, result_binary_probit$pc),
@@ -505,7 +540,7 @@ print(p2)
 
 ## Horseshoe vs Standard Priors
 
-```{r horseshoe-comparison-plot, fig.width=10, fig.height=6}
+```{r horseshoe-comparison-plot, fig.width=10, fig.height=6, eval = has_ggplot2}
 # Compare standard vs horseshoe priors for high-dimensional data
 horseshoe_data <- data.frame(
   ATE = c(result_standard$pc, result_horseshoe$pc),
@@ -531,49 +566,58 @@ print(p3)
 
 ## Convergence Diagnostics
 
-```{r convergence-diagnostics, fig.width=12, fig.height=8}
-# Create trace plots for both outcome types
-par(mfrow = c(2, 2))
+Two different things need checking, and only one of them is an MCMC question.
 
-# Continuous outcome trace plots
-plot(result_continuous$pc, type = "l", 
-     main = "Trace Plot: Continuous Outcome (PC)",
-     xlab = "Iteration", ylab = "ATE", col = "blue")
-abline(h = true_ate_continuous, col = "red", lty = 2)
-
-plot(result_continuous$g.comp, type = "l", 
-     main = "Trace Plot: Continuous Outcome (G-comp)",
-     xlab = "Iteration", ylab = "ATE", col = "blue")
-abline(h = true_ate_continuous, col = "red", lty = 2)
-
-# Binary outcome trace plots
-plot(result_binary_logit$pc, type = "l", 
-     main = "Trace Plot: Binary Outcome (PC)",
-     xlab = "Iteration", ylab = "ATE (Prob. Diff.)", col = "blue")
-abline(h = true_ate_binary, col = "red", lty = 2)
-
-plot(result_binary_logit$g.comp, type = "l", 
-     main = "Trace Plot: Binary Outcome (G-comp)",
-     xlab = "Iteration", ylab = "ATE (Prob. Diff.)", col = "blue")
-abline(h = true_ate_binary, col = "red", lty = 2)
-
-par(mfrow = c(1, 1))
-```
+The **outcome and propensity score models** are fitted by Markov chain Monte
+Carlo, so R-hat and effective sample size apply to their coefficients.
+`drbayes_pc()` computes them before the sequential Monte Carlo sweep, because
+posterior coupling is only as trustworthy as the worse of the two posteriors,
+and returns the table in `$diagnostics`.
 
 ```{r convergence-stats}
-# Basic convergence statistics
-cat("Convergence Diagnostics:\n")
-cat("Continuous Outcome:\n")
-cat("  PC effective sample size:", 
-    round(length(result_continuous$pc) / (1 + 2 * sum(acf(result_continuous$pc, plot = FALSE)$acf[-1][1:min(10, length(result_continuous$pc)-1)]))), "\n")
-cat("  G-comp effective sample size:", 
-    round(length(result_continuous$g.comp) / (1 + 2 * sum(acf(result_continuous$g.comp, plot = FALSE)$acf[-1][1:min(10, length(result_continuous$g.comp)-1)]))), "\n")
+head(result_continuous$diagnostics)
 
-cat("Binary Outcome:\n")
-cat("  PC effective sample size:", 
-    round(length(result_binary_logit$pc) / (1 + 2 * sum(acf(result_binary_logit$pc, plot = FALSE)$acf[-1][1:min(10, length(result_binary_logit$pc)-1)]))), "\n")
-cat("  G-comp effective sample size:", 
-    round(length(result_binary_logit$g.comp) / (1 + 2 * sum(acf(result_binary_logit$g.comp, plot = FALSE)$acf[-1][1:min(10, length(result_binary_logit$g.comp)-1)]))), "\n")
+cat("Worst R-hat:", round(max(result_continuous$diagnostics$rhat), 4), "\n")
+cat("Smallest bulk ESS:",
+    round(min(result_continuous$diagnostics$ess_bulk)), "\n")
+```
+
+The **coupling step** is diagnosed by `$smc`: the tilting parameter it settled
+on, the posterior mean of the moment condition it achieved, the tolerance that
+was compared against, and whether the two met.
+
+```{r smc-diagnostics}
+str(result_continuous$smc)
+```
+
+`print()` puts both summaries next to the treatment effect.
+
+```{r print-fit}
+print(result_continuous)
+```
+
+The draws in `$pc` and `$g.comp` are **not** a Markov chain. They are
+sequential Monte Carlo particles: they are resampled at every step of the
+sweep, so their order carries no information. A trace plot of them, or an
+effective sample size computed from their autocorrelation, would be estimating
+nothing. Plot their densities instead.
+
+```{r posterior-density-plot, fig.width=7, fig.height=5}
+plot(result_continuous,
+     main = paste0("Posterior of the ATE (true value ",
+                   true_ate_continuous, ")"))
+```
+
+Where a rank plot is wanted, it belongs to the MCMC draws, which the samplers
+return directly. `rank_plot()` takes the iterations by chains by parameters
+array they produce; under convergence every chain contributes equally to every
+rank interval, so the bars sit near the dashed line.
+
+```{r rank-plot, fig.width=7, fig.height=4}
+X_outcome <- model.matrix(Y ~ A + X1 + X2 + X3 + A:X1, data)[, -1]
+draws_outcome <- bayes_lm(data$Y, X_outcome, mc = 1200, chains = 4)
+
+rank_plot(draws_outcome, parameter = "A")
 ```
 
 # Model Comparison
@@ -712,7 +756,7 @@ ps.formula = A ~ X1 + X2 + X3 + I(X1^2) + X1:X2
 ps.formula = A ~ .  # All variables except A and Y
 ```
 - **When to use**: Rich datasets with many potential confounders
-- **Requirement**: Must use regularized priors (HS.Logit, HS.Probit)
+- **Requirement**: Must use regularized priors (bayes_logit_hs, bayes_probit_hs)
 - **Example**: Electronic health records with hundreds of variables
 
 ### Quick Decision Guide
@@ -780,40 +824,122 @@ binary_ci <- quantile(result_binary_logit$pc, c(0.025, 0.975))
 cat("95% CI width (continuous):", round(diff(continuous_ci), 3), "\n")
 cat("95% CI width (binary):", round(diff(binary_ci), 3), "\n")
 
-# Basic autocorrelation check
-acf_cont <- acf(result_continuous$pc, plot = FALSE, lag.max = 5)
-acf_bin <- acf(result_binary_logit$pc, plot = FALSE, lag.max = 5)
-
-cat("Lag-1 autocorrelation (continuous):", round(acf_cont$acf[2], 3), "\n")
-cat("Lag-1 autocorrelation (binary):", round(acf_bin$acf[2], 3), "\n")
-
-# Effective sample size estimation
-eff_cont <- length(result_continuous$pc) / (1 + 2 * sum(acf_cont$acf[-1]))
-eff_bin <- length(result_binary_logit$pc) / (1 + 2 * sum(acf_bin$acf[-1]))
-
-cat("Effective sample size (continuous):", round(max(eff_cont, 1)), "\n")
-cat("Effective sample size (binary):", round(max(eff_bin, 1)), "\n")
+# Was the moment condition actually solved? When it was not, the pc draws
+# carry no double robustness guarantee and the fit should not be reported.
+fits <- list(continuous = result_continuous, binary = result_binary_logit)
+for (nm in names(fits)) {
+  smc <- fits[[nm]]$smc
+  cat(nm, ": lambda =", round(smc$lambda, 3),
+      "| |mean B_n| =", signif(abs(smc$B_mean), 3),
+      "| tolerance =", signif(smc$tol, 3),
+      "| converged =", smc$converged, "\n")
+}
 ```
+
+### Which average the interval is for
+
+Both `g.comp` and `pc` are posteriors for equation (3.7): the average of the
+fitted contrast **over the covariate vectors that were observed**. Section 2.1
+of the paper defines the estimand as \(\tau = E[Y_1 - Y_0]\), an average over
+the population those vectors came from. The two are different quantities, and
+it is worth knowing which one a credible interval belongs to.
+
+They are the same number when the fitted contrast
+\(c_i = m_1(X_i) - m_0(X_i)\) does not vary from unit to unit, and they part
+company when it does. Averaging over the observed covariates treats their
+distribution as known, so the interval does not carry the uncertainty of not
+knowing it; putting Dirichlet weights on the observations, which is what a
+Bayesian bootstrap does, adds exactly \(\mathrm{Var}_i(c_i)/n\) to the
+posterior variance and leaves the posterior mean alone.
+
+Two things make the contrast vary: a treatment interaction, and a link that is
+not the identity. Only the first is large enough to notice.
+
+```{r which-average}
+fit_hetero <- drbayes_pc(
+  Y ~ A + X1 + X2 + X3 + A:X1, A ~ X1 + X2 + X3, data,
+  outcome.model = bayes_lm, ps.model = bayes_logit,
+  control = drbayes_control(mc = 2000, bn = 500, keep_particles = TRUE),
+  diagnostics = "none")
+
+contrast <- with(fit_hetero$particles,
+                 tcrossprod(outcome, Z.lm1) - tcrossprod(outcome, Z.lm0))
+n_obs <- fit_hetero$data_info$n_observations
+
+observed  <- rowMeans(contrast)                       # equation (3.7)
+added     <- mean(apply(contrast, 1, var)) / n_obs    # what the weights add
+widen     <- sqrt(1 + added / var(observed))
+
+cat("interval for the observed covariates:", round(diff(quantile(observed,
+    c(0.025, 0.975))), 4), "\n")
+cat("wider by a factor of:", round(widen, 3), "\n")
+```
+
+How large the factor is depends on how much the effect actually varies. The
+interaction in this example is mild -- `0.4 * A * X1` against a treatment effect
+of 1.5 -- and the factor comes out near 1.02. On a unit level effect of
+`2 + 1.5 * X1` it is about 1.11 at n = 500 and 1.21 at n = 2000.
+
+Without an interaction, and with an identity link, it is exactly 1: every unit
+has the same contrast, so it makes no difference how the units are weighted.
+With a logit or probit link and no interaction it is about 1.001, which is to
+say that the link does make the contrast vary, but nowhere near enough to
+matter against the posterior uncertainty.
+
+None of this touches the point estimate or the double robustness of Theorem 1.
+Dirichlet weights average to \(1/n\), so the posterior mean is unchanged, and
+the theorem is a statement about that mean. What changes is the width of the
+interval, and which estimand it is an interval for.
+
+### When the sweep does not converge
+
+`converged = FALSE` means the sweep ran out of tilting parameter without
+driving the moment condition below the tolerance. The `pc` draws it returns are
+still draws from *a* tilted posterior, but not one that satisfies the
+constraint, so Theorem 1 does not apply to them and they should not be reported
+as doubly robust.
+
+Raising `mc` does not help. The sweep searches over `lambda` on a grid bounded
+by `lambda_max`, and how many posterior draws that grid is evaluated on does
+not change where the moment condition can be met. What to try instead, roughly
+in order of how often it is the answer:
+
+- **Widen the search.** `drbayes_control(lambda_max = 20)` doubles the range.
+  A large fitted `lambda` at the boundary is the signature of a tilt that wants
+  to go further than it was allowed.
+- **Look at the propensity score.** A moment condition that cannot be satisfied
+  usually means the weights are being dominated by a handful of observations.
+  `range(fitted(glm(ps.formula, binomial, data)))` close to 0 or 1 says so
+  directly, and the fit will refuse outright if it reaches either.
+- **Use the subclassification moment.** `drbayes_control(moment = "subclass")`
+  replaces the individual inverse score weights of equation (3.4) with the
+  treated fraction of a propensity score stratum, which is far less sensitive
+  to a single extreme score. Note that this is a different moment condition,
+  not a numerical variant of the same one: Lemma 1 is a statement about
+  equation (3.4), and the tilt that satisfies one condition is not the tilt
+  that satisfies the other. `lambda` is therefore not comparable between the
+  two settings. On one correctly specified fit used while writing this, with
+  n = 800, equation (F.2) was already satisfied at `lambda = 0` while equation
+  (3.4) needed `lambda = -2.7`; which of the two asks for more tilting is a
+  property of the data, not something to read as one being better behaved.
+- **Take fewer, larger steps.** The Liu-West kernel smooths the particles at
+  every step, and hundreds of steps will pull a heavy-tailed posterior towards
+  a normal one. `drbayes_control(n_steps = 200)` is the usual remedy when the
+  outcome prior is a horseshoe.
 
 # Alternative: Bayesian Bootstrap Method
 
 ```{r bayesian-bootstrap}
-# Compare with the Bayesian Bootstrap approach
-# Prepare data in the format expected by DRBayes.BB
-X.lm_bb <- data.frame(
-  A = data$A,
-  X1 = data$X1, X2 = data$X2, X3 = data$X3,
-  A_X1 = data$A * data$X1  # Interaction term
-)
-X.ps_bb <- data.frame(X1 = data$X1, X2 = data$X2, X3 = data$X3)
-
-result_bb <- DRBayes.BB(
-  Y = data$Y,
-  A = data$A,
-  X.lm = X.lm_bb,
-  X.ps = X.ps_bb,
-  num_iterations = 2000,
-  family = "gaussian"
+# Compare with the Bayesian Bootstrap approach. It takes the same formula
+# interface as drbayes_pc, so the interaction is written as A:X1 and the
+# counterfactual predictions recompute it.
+result_bb <- drbayes_bb(
+  outcome.formula = Y ~ A + X1 + X2 + X3 + A:X1,
+  ps.formula      = A ~ X1 + X2 + X3,
+  data            = data,
+  num_iterations  = 300,
+  family          = "gaussian",
+  verbose         = FALSE
 )
 
 cat("Bayesian Bootstrap ATE:", round(mean(result_bb), 3), "\n")

@@ -1,0 +1,110 @@
+url: https://t-momozaki.github.io/DRBayes/
+
+template:
+  bootstrap: 5
+  # The help pages are full of \deqn and \eqn -- the priors of every sampler,
+  # the moment condition, the tilting -- and pkgdown emits them as LaTeX
+  # delimiters without loading anything that can render them. Without this the
+  # site shows the markup.
+  math-rendering: mathjax
+  bslib:
+    primary: "#2166AC"
+
+navbar:
+  structure:
+    left: [intro, reference, articles, news]
+    right: [search, github]
+
+reference:
+- title: Estimating a treatment effect
+  desc: >
+    The two estimators. `drbayes_pc()` is the posterior coupling of the paper,
+    which returns an explicit posterior for the average treatment effect;
+    `drbayes_bb()` is the Bayesian bootstrap estimator of Saarela et al., kept
+    for comparison and targeting a different estimand.
+  contents:
+  - drbayes_pc
+  - drbayes_bb
+  - drbayes_control
+
+- title: Looking at a fit
+  desc: >
+    What a fit carries and how to read it. The tilted and untilted posteriors
+    are both returned, so the two can always be compared.
+  contents:
+  - DRBayes-methods
+  - print.DRBayes
+  - summary.DRBayes
+  - plot.DRBayes
+  - print.drbayes_control
+
+- title: Posterior samplers
+  desc: >
+    The models whose posteriors are coupled. Each returns an iterations by
+    chains by parameters array and can be used on its own as a Bayesian
+    regression. The horseshoe variants take an `unshrunk` argument, which is
+    how the treatment effect is kept out of the shrinkage.
+  contents:
+  - bayes_lm
+  - bayes_logit
+  - bayes_probit
+  - bayes_lm_hs
+  - bayes_logit_hs
+  - bayes_probit_hs
+  - bayes_stan
+
+- title: Convergence diagnostics
+  desc: >
+    Rank normalised R-hat and effective sample size, after Vehtari et al.
+    (2021). These are statements about Markov chain draws: they apply to the
+    samplers above, and not to the sequential Monte Carlo particles, which are
+    resampled and carry no order.
+  contents:
+  - convergence_diagnostics
+  - rank_plot
+
+- title: Sensitivity to unmeasured confounding
+  desc: >
+    Algorithm 3 of the paper, reweighting the fitted posterior under an assumed
+    distribution for the bias rather than refitting.
+  contents:
+  - drbayes_sensitivity
+  - xi_triangular
+  - print.DRBayes_sensitivity
+  - summary.DRBayes_sensitivity
+
+- title: Confounder selection
+  desc: >
+    Algorithm 4, selecting from a shrinkage posterior and updating only the
+    selected coefficients through a modified moment condition.
+  contents:
+  - drbayes_select
+  - print.DRBayes_select
+
+- title: Simulation studies
+  desc: >
+    The data generating process of Section 5 and the machinery for replicating
+    it, including the seeding that makes a study reproducible across any number
+    of workers.
+  contents:
+  - generate_dataset
+  - run_parallel_simulation
+  - convert_to_array
+
+- title: The package
+  contents:
+  - DRBayes-package
+
+- title: Superseded names
+  desc: >
+    The names used before the release. Each forwards to its replacement and
+    warns once per session.
+  contents:
+  - DRBayes-deprecated
+
+articles:
+- title: Using the package
+  navbar: ~
+  contents:
+  - getting-started
+  - external-software-integration

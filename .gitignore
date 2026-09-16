@@ -9,27 +9,30 @@ README.html
 .Renviron
 .Rprofile
 
-# renv (if using, but not recommended for packages)
+# renv (local development environment only, not part of the package)
 renv/
 renv.lock
 
-# Build files
+# Build artifacts
 /*.tar.gz
 /*.Rcheck/
-.Rbuildignore
-inst/old
-Meta/
-
-# Documentation
+*.zip
 Meta/
 doc/
 inst/doc
-inst/scripts
-archive/
 vignettes/*.html
 vignettes/*.pdf
 vignettes/*.R
 vignettes/.build.timestamp
+
+# Compiled code
+src/*.o
+src/*.so
+src/*.dll
+src/*.dylib
+
+# Historical copies kept for reference, excluded from the build via .Rbuildignore
+archive/
 
 # macOS
 .DS_Store
@@ -39,7 +42,14 @@ vignettes/.build.timestamp
 *.swp
 *.swo
 
-# Build artifacts
-*.tar.gz
-*.zip
+# Deliberately NOT ignored:
+#   .Rbuildignore   package metadata; a clone must be able to reproduce the tarball
+#   docs/           pkgdown output, published via GitHub Pages
+#   scripts/        paper reproduction scripts (excluded from the build, not from the repo)
 
+# iCloud sync writes conflict copies -- "tilting 2.R" beside "tilting.R" --
+# into directories while R is building in them. One landed in R/ and would have
+# shipped; ten landed in docs/ and would have been published. See
+# tools/platform-checks/check-outside-icloud.sh.
+* [0-9].*
+* ([0-9]).*

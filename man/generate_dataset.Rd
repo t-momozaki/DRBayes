@@ -17,64 +17,72 @@ confounders. Default is 40. Can be 0 for only the 4 primary confounders.}
 \value{
 A data.frame with \code{nn} rows and \code{6 + pp} columns:
 \describe{
-  \item{AA}{Binary treatment assignment (0 or 1)}
-  \item{YY}{Observed outcome (continuous)}
-  \item{WW1, WW2, WW3, WW4}{Primary confounding variables}
-  \item{WW5, ..., WW(4+pp)}{Additional confounding variables (only if pp > 0)}
+\item{AA}{Binary treatment assignment (0 or 1)}
+\item{YY}{Observed outcome (continuous)}
+\item{WW1, WW2, WW3, WW4}{Primary confounding variables}
+\item{WW5, ..., WW(4+pp)}{Irrelevant covariates (only if pp > 0)}
 }
 }
 \description{
 Generates a synthetic dataset with confounders, treatment assignment, and outcomes
 following a specific data generating process designed for testing causal inference methods.
-The dataset includes potential outcomes under both treatment and control conditions.
+Only the observed outcome is returned; the potential outcomes are used to build it and then discarded.
 }
 \details{
 The data generating process follows these steps:
 
-**Confounders:**
+\strong{Covariates:}
 \itemize{
-  \item 4 primary confounders: \eqn{X_1, X_2, X_3, X_4 \sim N(0, 1)}
-  \item \code{pp} additional confounders: \eqn{X_{5+j} \sim N(\mu_j, 1)} where \eqn{\mu_j \sim \text{Uniform}(-2, 2)} (only if pp > 0)
+\item 4 confounders: \eqn{X_1, X_2, X_3, X_4 \sim N(0, 1)}
+\item \code{pp} further covariates \eqn{X_{4+j} \sim N(\mu_j, 1)} with
+\eqn{\mu_j \sim \mathrm{Unif}(-2, 2)}. These enter neither the treatment
+nor the outcome model, so they are irrelevant covariates rather than
+confounders, matching the high-dimensional setting of the paper's
+Appendix D.1. Note that the paper draws \eqn{\mu_j \sim \mathrm{Unif}(-1, 1)},
+so this generator is twice as dispersed as the published one.
 }
 
-**Treatment assignment:**
-\deqn{P(A = 1 | X) = \text{logit}^{-1}(1 - 0.5 X_1 + 0.25 X_2 + 0.1 X_3)}
+\strong{Treatment assignment:}
+\deqn{P(A = 1 | X) = \mathrm{logit}^{-1}(X_1 - 0.5 X_2 + 0.25 X_3 + 0.1 X_4)}
 
-**Potential outcomes:**
-\deqn{Y^{(0)} = 100 + 27.4 X_1 + 13.7(X_2 + X_3 + X_4) + \epsilon_0}
-\deqn{Y^{(1)} = 210 + 27.4 X_1 + 13.7(X_2 + X_3 + X_4) + \epsilon_1}
+There is no intercept, so treatment prevalence is one half.
 
-where \eqn{\epsilon_0, \epsilon_1 \sim N(0, 1)} independently.
+\strong{Potential outcomes:}
+\deqn{Y^{(0)} = 100 + 27.4 X_1 + 13.7(X_2 + X_3 + X_4) + \epsilon}
+\deqn{Y^{(1)} = 210 + 27.4 X_1 + 13.7(X_2 + X_3 + X_4) + \epsilon}
 
-**Observed outcome:**
+where \eqn{\epsilon \sim N(0, 1)}. The SAME error appears in both potential
+outcomes, as the paper's single \eqn{\epsilon_i} implies, so the unit level
+treatment effect is exactly 110 for every observation.
+
+\strong{Observed outcome:}
 \deqn{Y = A \cdot Y^{(1)} + (1-A) \cdot Y^{(0)}}
 
 The true average treatment effect (ATE) is \eqn{E[Y^{(1)} - Y^{(0)}] = 210 - 100 = 110}.
 }
 \examples{
-\dontrun{
 # Generate a dataset with only primary confounders
 data_minimal <- generate_dataset(nn = 100, pp = 0, seed = 123)
 head(data_minimal)
-ncol(data_minimal)  # Should be 6 (AA, YY, WW1-WW4)
+ncol(data_minimal)  # 6: AA, YY, WW1-WW4
 
-# Generate a dataset with additional confounders
+# Generate a dataset with additional, unrelated covariates
 data_extended <- generate_dataset(nn = 100, pp = 20, seed = 123)
-head(data_extended)
-ncol(data_extended)  # Should be 26 (AA, YY, WW1-WW24)
+ncol(data_extended)  # 26: AA, YY, WW1-WW24
 
 # Check treatment assignment
 table(data_minimal$AA)
 
-# Check outcome distribution by treatment
-aggregate(YY ~ AA, data = data_minimal, FUN = function(x) c(mean = mean(x), sd = sd(x)))
+# The unit level treatment effect is exactly 110, so the difference in
+# means below is that plus the confounding the covariates carry.
+aggregate(YY ~ AA, data = data_minimal, FUN = mean)
 
 # Estimate propensity scores
-ps_model <- glm(AA ~ WW1 + WW2 + WW3 + WW4, data = data_minimal, family = binomial)
-summary(ps_model)
-}
+ps_model <- glm(AA ~ WW1 + WW2 + WW3 + WW4, data = data_minimal,
+                family = binomial)
+coef(ps_model)
 
 }
 \seealso{
-\code{\link{run_parallel_simulation}}, \code{\link{DRBayes.PC}}
+\code{\link{run_parallel_simulation}}, \code{\link{drbayes_pc}}
 }

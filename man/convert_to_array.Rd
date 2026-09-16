@@ -13,9 +13,9 @@ convert_to_array(simulation_results)
 \value{
 A 3-dimensional array with dimensions:
 \describe{
-  \item{Dimension 1}{Observations (rows of each data.frame)}
-  \item{Dimension 2}{Variables (columns of each data.frame)}
-  \item{Dimension 3}{Simulations (list elements)}
+\item{Dimension 1}{Observations (rows of each data.frame)}
+\item{Dimension 2}{Variables (columns of each data.frame)}
+\item{Dimension 3}{Simulations (list elements)}
 }
 
 The array includes appropriate dimension names for easy indexing.
@@ -28,44 +28,38 @@ post-processing simulation results from \code{\link{run_parallel_simulation}}.
 \details{
 This function is useful when you need to:
 \itemize{
-  \item Perform array-based operations across simulations
-  \item Calculate statistics across the simulation dimension
-  \item Export results to other software that expects array format
-  \item Use vectorized operations for faster computation
+\item Perform array-based operations across simulations
+\item Calculate statistics across the simulation dimension
+\item Export results to other software that expects array format
+\item Use vectorized operations for faster computation
 }
 
-**Memory warning:** The resulting array can be very large for many simulations
+\strong{Memory warning:} The resulting array can be very large for many simulations
 or high-dimensional datasets. Consider the memory requirements before conversion.
 }
 \examples{
-\dontrun{
 # Generate simulation results with only primary confounders
-results <- run_parallel_simulation(num_simulations = 5, nn = 100, pp = 0)
+results <- run_parallel_simulation(num_simulations = 5, nn = 100, pp = 0,
+                                   seed = 1)
 
 # Convert to array format
 result_array <- convert_to_array(results)
 
-# Check dimensions: [observations, variables, simulations]
-dim(result_array)  # Should be [100, 6, 5] for pp=0
+# Dimensions: observations, variables, simulations
+dim(result_array)  # 100 x 6 x 5 for pp = 0
+dimnames(result_array)[[2]]
 
-# Generate simulation results with additional confounders
-results_extended <- run_parallel_simulation(num_simulations = 5, nn = 100, pp = 10)
-result_array_extended <- convert_to_array(results_extended)
-dim(result_array_extended)  # Should be [100, 16, 5] for pp=10
+# Access a specific simulation
+sim_1 <- result_array[, , 1]  # First simulation as a matrix
 
-# Access specific simulation
-sim_1 <- result_array[, , 1]  # First simulation as matrix
-
-# Calculate mean across simulations for each variable
-var_means <- apply(result_array, c(1, 2), mean)
-
-# Calculate treatment effect for each simulation
+# The unadjusted difference in means for each simulation. The unit level
+# treatment effect is 110, so the gap is the confounding.
 ate_by_sim <- apply(result_array, 3, function(sim) {
   treated <- sim[sim[, "AA"] == 1, "YY"]
   control <- sim[sim[, "AA"] == 0, "YY"]
   mean(treated) - mean(control)
 })
-}
+round(ate_by_sim, 1)
 
 }
 \seealso{

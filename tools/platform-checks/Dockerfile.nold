@@ -1,0 +1,15 @@
+# CRAN's no-long-double flavour: the platform has an 80-bit long double and R is
+# built not to use it. No compile-time test can tell this apart from a platform
+# that simply lacks one, which is why the kernels ask R instead of testing a
+# macro. This is the environment that distinguishes the two.
+FROM ghcr.io/r-hub/containers/nold
+RUN apt-get update && apt-get install -y --no-install-recommends libuv1-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN Rscript -e 'install.packages(c("Rcpp","RcppArmadillo","testthat","future", \
+      "furrr","extraDistr","RcppTN","pgdraw","mvtnorm"), \
+      Ncpus = 6, repos = "https://cloud.r-project.org")' \
+ && Rscript -e 'need <- c("Rcpp","RcppArmadillo","testthat","future","furrr", \
+      "extraDistr","RcppTN","pgdraw","mvtnorm"); \
+      missing <- setdiff(need, rownames(installed.packages())); \
+      if (length(missing)) stop("missing: ", toString(missing)); \
+      cat("all dependencies present\n")'
