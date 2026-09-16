@@ -31,7 +31,7 @@ Submitted to the two builders CRAN maintainers are asked to use before
 submission, and checked on the five platforms GitHub Actions offers:
 
 * win-builder, R-devel: 1 NOTE, the new submission one.
-* win-builder, R 4.6.1: submitted.
+* win-builder, R 4.6.1: 1 NOTE, the same one.
 * macOS builder: builds.
 * GitHub Actions, R-CMD-check on macOS, Windows and Ubuntu at release, devel
   and oldrel-1: all pass.
