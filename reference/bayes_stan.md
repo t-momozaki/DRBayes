@@ -1,0 +1,281 @@
+# Fit One of the Package Models with Stan Instead of the Gibbs Sampler
+
+Fits the same six models the Gibbs samplers fit, using the No-U-Turn
+sampler through CmdStan, and returns the draws in the layout the Gibbs
+samplers return. The result can be passed straight to the
+`outcome.samples` or `ps.samples` argument of
+[`drbayes_pc`](https://t-momozaki.github.io/DRBayes/reference/drbayes_pc.md),
+which does not care which backend produced it.
+
+This is an option, never the default. See the section "Why Stan is not
+the default" below.
+
+## Usage
+
+``` r
+bayes_stan(
+  model,
+  Y,
+  X,
+  mc = 5000,
+  chains = 4L,
+  warmup = 1000,
+  theta_prior = NULL,
+  sigma_prior = c(1, 1),
+  unshrunk = integer(0),
+  beta0_prior = NULL,
+  unshrunk_prior = NULL,
+  tau_prior = NULL,
+  p0 = 5,
+  seed = NULL,
+  adapt_delta = NULL,
+  max_treedepth = 10L,
+  parallel_chains = 1L,
+  cache_dir = NULL,
+  quiet = TRUE,
+  ...
+)
+```
+
+## Arguments
+
+- model:
+
+  Character, which model to fit. One of "lm", "logit", "probit",
+  "lm_hs", "logit_hs" and "probit_hs", naming the counterparts of
+  [`bayes_lm`](https://t-momozaki.github.io/DRBayes/reference/bayes_lm.md),
+  [`bayes_logit`](https://t-momozaki.github.io/DRBayes/reference/bayes_logit.md),
+  [`bayes_probit`](https://t-momozaki.github.io/DRBayes/reference/bayes_probit.md),
+  [`bayes_lm_hs`](https://t-momozaki.github.io/DRBayes/reference/bayes_lm_hs.md),
+  [`bayes_logit_hs`](https://t-momozaki.github.io/DRBayes/reference/bayes_logit_hs.md)
+  and
+  [`bayes_probit_hs`](https://t-momozaki.github.io/DRBayes/reference/bayes_probit_hs.md).
+
+- Y:
+
+  A numeric vector of outcomes. Continuous for "lm" and "lm_hs", binary
+  for the other four.
+
+- X:
+
+  A matrix or data.frame of covariates, one row per observation. An
+  intercept term is added automatically, as in the Gibbs samplers.
+
+- mc:
+
+  A positive integer, the number of draws kept per chain after warm-up
+  (default: 5000).
+
+- chains:
+
+  A positive integer, the number of Markov chains (default: 4).
+
+- warmup:
+
+  A positive integer, the number of warm-up iterations per chain
+  (default: 1000). Warm-up draws are discarded by the sampler and never
+  appear in the returned array, so there is no burn-in left to remove.
+  When the result is handed to
+  [`drbayes_pc`](https://t-momozaki.github.io/DRBayes/reference/drbayes_pc.md),
+  set that function's `bn` to 0 unless you want to throw good draws
+  away.
+
+- theta_prior:
+
+  Prior precision of the coefficients under the normal prior, a positive
+  scalar, a square matrix, or NULL for the weakly informative default of
+  1/100 times the identity. Used by "lm", "logit" and "probit".
+
+- sigma_prior:
+
+  A numeric vector of length 2, the shape and scale of the inverse gamma
+  prior on the error variance (default: c(1, 1)). Used by "lm" and
+  "lm_hs".
+
+- unshrunk:
+
+  Integer column indices into `X` naming the coefficients that keep a
+  normal prior instead of the horseshoe. In a causal model those are the
+  treatment main effect and every effect modification term, because
+  shrinking them attenuates the treatment effect. Used by the three
+  horseshoe models.
+
+- beta0_prior:
+
+  Prior precision of the intercept under the horseshoe models (default:
+  1/100).
+
+- unshrunk_prior:
+
+  Prior precision of the coefficients listed in `unshrunk` (default:
+  1/100).
+
+- tau_prior:
+
+  Scale of the half-Cauchy prior on the global shrinkage parameter, or
+  NULL (default) to use the value implied by `p0` following Piironen and
+  Vehtari (2017), exactly as the Gibbs samplers do.
+
+- p0:
+
+  A positive integer, a guess at how many coefficients are non-zero,
+  used only when `tau_prior` is NULL (default: 5).
+
+- seed:
+
+  A single number passed to CmdStan, or NULL (default) to draw one from
+  the caller's random number stream so that the fit is reproducible
+  under a single [`set.seed`](https://rdrr.io/r/base/Random.html).
+
+- adapt_delta:
+
+  Target average acceptance probability, or NULL (default) for 0.8 under
+  the normal priors and 0.99 under the horseshoe, where the posterior
+  geometry is harder and a larger value avoids most divergences.
+
+- max_treedepth:
+
+  Maximum depth of the NUTS trajectory tree (default: 10).
+
+- parallel_chains:
+
+  Number of chains to run at the same time (default: 1). Set it to
+  `chains` on a machine with the cores to spare.
+
+- cache_dir:
+
+  Directory in which to keep the compiled model when the package was
+  installed without compiled Stan executables. Defaults to
+  `getOption("DRBayes.stan_cache")` and, failing that, to a subdirectory
+  of the session's temporary directory, so nothing is written outside
+  the session unless you ask for it. Point it at a permanent directory
+  to compile once instead of once per session.
+
+- quiet:
+
+  Logical, whether to suppress the compiler and sampler progress
+  messages (default: TRUE).
+
+- ...:
+
+  Further arguments passed to the `$sample()` method of the CmdStan
+  model, for instance `init` or `refresh`.
+
+## Value
+
+An array of posterior draws of the regression coefficients with
+dimensions `mc` by `chains` by `ncol(X) + 1`, indexed by iteration, then
+chain, then parameter, with "(Intercept)" and the column names of X on
+the third margin. This is the same layout, and the same dimnames, that
+the Gibbs samplers return.
+
+Two attributes carry the information a Gibbs sampler cannot report:
+
+- nuts_diagnostics:
+
+  A data frame with one row per chain and columns `chain`, `divergent`
+  (post-warm-up divergent transitions), `max_treedepth` (iterations that
+  hit `max_treedepth`), `ebfmi` (the energy Bayesian fraction of missing
+  information), `step_size` and `accept_stat`.
+
+- stan_info:
+
+  A list recording the model name, the number of warm-up iterations, the
+  seed, the CmdStan version and the total sampling time in seconds.
+
+They are attributes rather than list elements so that the return value
+is still an array, and so passing it to
+[`drbayes_pc`](https://t-momozaki.github.io/DRBayes/reference/drbayes_pc.md)
+needs no unwrapping. Attributes on an object that gets subset are
+dropped, so read them off the value this function returns rather than
+off a slice of it.
+
+## Why Stan is not the default
+
+The CRAN build machines do not have CmdStan, so the macOS and Windows
+binaries CRAN distributes cannot carry compiled Stan models, and users
+of those binaries would have to install from source to get them. Most R
+users install binaries, so making Stan the default would leave the
+majority with a default path that does not work.
+
+Speed is not the reason to switch either. About 98 percent of a
+[`drbayes_pc`](https://t-momozaki.github.io/DRBayes/reference/drbayes_pc.md)
+call is the coupling sweep rather than the model fit, and on the data
+generating mechanism of the paper one Stan fit takes roughly 1.9 seconds
+against 1.0 for the corresponding Gibbs sampler.
+
+The reason to offer Stan is capability. NUTS reports divergent
+transitions, E-BFMI and treedepth saturation, so a fit that has gone
+wrong says so instead of quietly returning biased draws. Its non-centred
+parameterisation of the horseshoe also handles the funnel shaped
+posterior that a Gibbs sampler explores only slowly.
+
+## Divergences under the horseshoe
+
+The horseshoe models often report a handful of divergent transitions
+even at `adapt_delta = 0.99`. The half-Cauchy tails of the local scales
+leave a narrow neck in the posterior that the non-centred
+parameterisation reduces but does not remove. The corresponding Gibbs
+samplers have the same trouble with the same region and simply cannot
+report it. Raise `adapt_delta` further if the warning persists, and
+compare the posterior means against
+[`bayes_lm_hs`](https://t-momozaki.github.io/DRBayes/reference/bayes_lm_hs.md)
+before trusting either.
+
+## Requirements
+
+CmdStan and the `cmdstanr` package must be installed. If they are not,
+this function stops and names the two steps. It never falls back to a
+different sampler: a user who asked for Stan must not be handed
+something else without being told.
+
+If the installed package does not carry compiled Stan executables, which
+is the case for a binary installation, the model is compiled on first
+use. That takes about half a minute per model and is then cached, for
+the session by default or permanently if you set `cache_dir`.
+
+## References
+
+Carpenter, B., Gelman, A., Hoffman, M. D., Lee, D., Goodrich, B.,
+Betancourt, M., Brubaker, M., Guo, J., Li, P., and Riddell, A. (2017).
+Stan: A probabilistic programming language. Journal of Statistical
+Software, 76(1).
+
+Piironen, J. and Vehtari, A. (2017). Sparsity information and
+regularization in the horseshoe and other shrinkage priors. Electronic
+Journal of Statistics, 11(2), 5018-5051.
+
+## See also
+
+[`bayes_lm`](https://t-momozaki.github.io/DRBayes/reference/bayes_lm.md)
+and the other Gibbs samplers, which fit the same models without needing
+CmdStan, and
+[`drbayes_pc`](https://t-momozaki.github.io/DRBayes/reference/drbayes_pc.md),
+which consumes the draws.
+
+## Examples
+
+``` r
+# CmdStan is not installed with the package, so the example runs only where
+# it is present. Everything else in DRBayes works without it. It is wrapped
+# in donttest because loading a compiled Stan model costs several seconds
+# before any sampling starts, which is longer than a routine example should
+# take; the code itself is valid and does run.
+# \donttest{
+if (requireNamespace("instantiate", quietly = TRUE) &&
+    instantiate::stan_cmdstan_exists()) {
+  set.seed(1)
+  n <- 120
+  X <- cbind(A = rbinom(n, 1, 0.5), X1 = rnorm(n))
+  Y <- 1 + 2 * X[, "A"] - 0.5 * X[, "X1"] + rnorm(n)
+
+  draws <- bayes_stan("lm", Y, X, mc = 250, warmup = 250, chains = 2)
+  print(dim(draws))
+  print(attr(draws, "nuts_diagnostics"))
+
+  # The same array a Gibbs sampler would have produced, so drbayes_pc takes
+  # it as it stands.
+  print(apply(draws, 3, mean))
+}
+# }
+```
