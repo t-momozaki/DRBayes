@@ -387,7 +387,7 @@
 #'
 #' @examples
 #' set.seed(123)
-#' n <- 200
+#' n <- 150
 #' dat <- data.frame(X1 = rnorm(n), X2 = rnorm(n), X3 = rnorm(n))
 #' dat$A <- rbinom(n, 1, plogis(0.2 + 0.5 * dat$X1 - 0.3 * dat$X2))
 #' dat$Y <- 1 + 1.5 * dat$A + 0.8 * dat$X1 + 0.6 * dat$X2 +
@@ -398,7 +398,7 @@
 #' # covariates, and it can only average what the model can express.
 #' fit <- drbayes_pc(Y ~ A + X1 + X2 + A:X1, A ~ X1 + X2 + X3, dat,
 #'                   outcome.model = bayes_lm, ps.model = bayes_logit,
-#'                   control = drbayes_control(mc = 1500, bn = 500))
+#'                   control = drbayes_control(mc = 800, bn = 300))
 #' fit
 #' summary(fit)
 #'
@@ -412,7 +412,7 @@
 #' dat$Ybin <- rbinom(n, 1, plogis(0.5 + 0.8 * dat$A + 0.4 * dat$X1))
 #' drbayes_pc(Ybin ~ A + X1 + X2, A ~ X1 + X2 + X3, dat,
 #'            outcome.model = bayes_logit, ps.model = bayes_logit,
-#'            control = drbayes_control(mc = 1500, bn = 500))
+#'            control = drbayes_control(mc = 800, bn = 300))
 #'
 #' # Transformations are rebuilt through the fitted terms, so the poly() basis
 #' # in the two counterfactual designs is the one the model was fitted with
@@ -420,24 +420,27 @@
 #' drbayes_pc(Y ~ A + log(abs(X1) + 1) + poly(X3, 2) + A:X1,
 #'            A ~ X1 + X2 + X3, dat,
 #'            outcome.model = bayes_lm, ps.model = bayes_logit,
-#'            control = drbayes_control(mc = 1000, bn = 300))
+#'            control = drbayes_control(mc = 600, bn = 200))
 #'
+#' \donttest{
 #' # Draws from elsewhere, supplied instead of fitting. Anything that returns a
 #' # draws-by-parameters matrix will do -- Stan, JAGS, brms -- provided its
 #' # columns are those of model.matrix() for the same formula, and the
 #' # propensity score draws are on the scale `ps.link` names. Here they come
 #' # from this package's own samplers, which take the covariates without an
-#' # intercept and add one.
+#' # intercept and add one. Two fits rather than one, so it is the slowest
+#' # thing on this page and sits outside the timed examples.
 #' Zo <- model.matrix(Y ~ A + X1 + X2, dat)[, -1, drop = FALSE]
 #' Zp <- model.matrix(A ~ X1 + X2 + X3, dat)[, -1, drop = FALSE]
-#' otc <- bayes_lm(dat$Y, Zo, mc = 3000, chains = 2L)
-#' ps  <- bayes_logit(dat$A, Zp, mc = 3000, chains = 2L)
+#' otc <- bayes_lm(dat$Y, Zo, mc = 1500, chains = 2L)
+#' ps  <- bayes_logit(dat$A, Zp, mc = 1500, chains = 2L)
 #' pool <- function(x) {
 #'   matrix(x, ncol = dim(x)[3], dimnames = list(NULL, dimnames(x)[[3]]))
 #' }
 #' drbayes_pc(Y ~ A + X1 + X2, A ~ X1 + X2 + X3, dat,
 #'            outcome.samples = pool(otc), ps.samples = pool(ps),
-#'            control = drbayes_control(bn = 1000))
+#'            control = drbayes_control(bn = 500))
+#' }
 #'
 #' @seealso
 #' \code{\link{bayes_lm}} for Bayesian linear regression,

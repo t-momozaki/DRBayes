@@ -37,8 +37,19 @@ jobs:
           r-version: ${{ matrix.config.r }}
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
+          # cmdstanr is suggested and is not on CRAN. DESCRIPTION declares
+          # Additional_repositories for R CMD check, which this action does not
+          # read, so without this the dependency step cannot resolve it and
+          # every job fails before it reaches the package.
+          extra-repositories: https://stan-dev.r-universe.dev
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          # The suggested packages are all installed, cmdstanr included: the
+          # tests and vignettes need testthat, knitr and rmarkdown, so
+          # restricting to hard dependencies would leave the check with
+          # nothing to run. cmdstanr installs from the repository named above
+          # and finds no CmdStan behind it, which is the case the package is
+          # written to handle and the tests skip on.
           extra-packages: any::rcmdcheck
           needs: check
       - uses: r-lib/actions/check-r-package@v2

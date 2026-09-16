@@ -27,8 +27,12 @@ own initialiser; it reported nothing there either.
 `tools/platform-checks/` in the sources holds the three container definitions
 and the script, so these runs can be repeated.
 
-* (to be added before submission) win-builder, R-devel and R-release
-* (to be added before submission) macOS builder
+Submitted to the two builders CRAN maintainers are asked to use before
+submission:
+
+* win-builder, R-devel and R-release
+* macOS builder (results at
+  <https://mac.R-project.org/macbuilder/results/1789523532-c226e687bd0b878b/>)
 
 ## R CMD check results
 
