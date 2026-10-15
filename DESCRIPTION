@@ -4,7 +4,7 @@ Title: Bayesian Doubly Robust Causal Inference Methods
 Version: 0.1.1
 Authors@R: c(
     person("Shunichiro", "Orihara", role = "aut"),
-    person("Tomotaka", "Momozaki", email = "t_momozaki@rs.tus.ac.jp",
+    person("Tomotaka", "Momozaki", email = "momozaki.stat@gmail.com",
            role = c("aut", "cre")),
     person("Shonosuke", "Sugasawa", role = "aut"))
 Description: Bayesian doubly robust estimation of average treatment effects via

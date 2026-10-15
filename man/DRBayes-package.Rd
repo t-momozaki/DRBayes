@@ -18,11 +18,11 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Tomotaka Momozaki \email{t_momozaki@rs.tus.ac.jp}
+\strong{Maintainer}: Tomotaka Momozaki \email{momozaki.stat@gmail.com}
 
 Authors:
 \itemize{
-  \item Tomotaka Momozaki \email{t_momozaki@rs.tus.ac.jp}
+  \item Tomotaka Momozaki \email{momozaki.stat@gmail.com}
   \item Shunichiro Orihara
   \item Shonosuke Sugasawa
 }

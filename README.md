@@ -525,4 +525,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE.md) f
 
 ---
 
-For more information, visit our [GitHub repository](https://github.com/t-momozaki/DRBayes) or contact the maintainer at t_momozaki@rs.tus.ac.jp.
+For more information, visit our [GitHub repository](https://github.com/t-momozaki/DRBayes) or contact the maintainer at momozaki.stat@gmail.com.
