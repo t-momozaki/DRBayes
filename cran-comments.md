@@ -12,7 +12,7 @@ than one.
 
 | environment | `capabilities("long.double")` | BLAS | result |
 | --- | --- | --- | --- |
-| macOS 26, aarch64, R 4.5.1 | FALSE (`long double` is `double` here) | Accelerate | 2409 pass, 0 fail |
+| macOS 26, aarch64, R 4.5.1 | FALSE (`long double` is `double` here) | Accelerate | 2490 pass, 0 fail |
 | Debian, aarch64, R 4.6.1 | TRUE, 128-bit | reference | 2371 pass, 0 fail |
 | r-hub `nold`, x86_64, R-devel | FALSE, though the platform has an 80-bit `long double` | reference | 2371 pass, 0 fail |
 | r-hub `clang-asan`, x86_64, R-devel | TRUE, 80-bit | reference | 2371 pass, 0 fail |
@@ -49,11 +49,13 @@ subsequent R-devel run reports no examples NOTE.
     0 errors | 0 warnings | 2 notes
 
 Run with `_R_CHECK_FORCE_SUGGESTS_=false` and `_R_CHECK_LIMIT_CORES_=TRUE` on
-macOS 26 (aarch64), R 4.5.1. Examples take 11s in total and the vignettes
-rebuild in 68s, so the whole check finishes well inside the CRAN budget. The
-PDF manual builds. Every example runs: there is no `\dontrun` in the package,
-and the two `\donttest` blocks are the ones that need CmdStan or spawn
-parallel workers.
+macOS 26 (aarch64), R 4.5.1. Over two runs the examples took under 10s in
+total, 15 to 28s with `--run-donttest`, and the vignettes rebuilt in 54 to
+100s, so the whole check finishes well inside the CRAN budget. The PDF manual builds. Every example runs: there is no `\dontrun` in the package,
+and the three `\donttest` blocks are the one in `bayes_stan` that needs
+CmdStan, the one in `run_parallel_simulation` that spawns parallel workers,
+and the one in `drbayes_pc` that supplies draws from elsewhere, moved there
+for time as described above.
 
 The second of the two NOTEs is local: this machine's HTML Tidy is older than
 the one the HTML validation step wants, so that step is skipped rather than
@@ -102,12 +104,12 @@ here.
 * The DOI in the Description field, `<doi:10.48550/arXiv.2506.04868>`, points
   to the arXiv preprint that the package implements. It resolves.
 
-* The examples that fit a model use small sample sizes and short chains. The
-  slowest are those of `summary.DRBayes`, `drbayes_sensitivity` and
-  `print.DRBayes_sensitivity`, each about 7 to 8 seconds of elapsed time on the
-  machine above; the rest are under 3 seconds. Longer demonstrations are inside
-  `\dontrun{}`, and the paper reproduction scripts live in `scripts/`, which
-  `.Rbuildignore` excludes from the build.
+* The examples that fit a model use small sample sizes and short chains. Run
+  with `--run-donttest` on the machine above, the slowest are those of
+  `bayes_stan`, 5.9 seconds of elapsed time, nearly all of it compiling the
+  Stan model inside `\donttest`, and `drbayes_pc`, 2.0 seconds; every other
+  example takes under one second. The paper reproduction scripts live in
+  `scripts/`, which `.Rbuildignore` excludes from the build.
 
 * No functions write to the user's file space, home directory or working
   directory. `bayes_stan()` caches its compiled Stan model under
