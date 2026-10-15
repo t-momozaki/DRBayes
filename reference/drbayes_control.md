@@ -28,9 +28,11 @@ drbayes_control(
   moment = c("ipw", "subclass"),
   n_subclass = 5L,
   pruning = FALSE,
-  prune.rule = c("weight", "quantile"),
+  prune.rule = c("absolute", "weight", "quantile"),
   prune.w = 0.3,
   prune.q = 0.1,
+  prune.abs = 1.5,
+  prune.max = 0.95,
   rhat_max = 1.01,
   ess_min = 400,
   keep_draws = FALSE,
@@ -77,16 +79,24 @@ drbayes_control(
 - lambda_max:
 
   Numeric. Largest value of the tilting parameter the sweep will
-  consider, written \\\bar{\lambda}\\ in the paper. Default 10.
+  consider, written \\\bar{\lambda}\\ in the paper. Default 10. The
+  value the constraint needs is measured in the reciprocal of the
+  outcome's units and, when the outcome model is misspecified, grows
+  with the sample size, so no default suits every data set. When the
+  sweep reaches `lambda_max` without meeting the constraint,
+  [`drbayes_pc()`](https://t-momozaki.github.io/DRBayes/reference/drbayes_pc.md)
+  warns; raise `lambda_max` then, with `n_steps` in proportion.
 
 - n_steps:
 
   Integer. Number of steps the sweep takes to travel from zero to
   `lambda_max`, written \\T\\ in the paper. The increment between
   successive values of the tilting parameter is `lambda_max / n_steps`.
-  Default 1000, giving the increment of 0.01 used in the paper. This is
-  the resolution of the grid of Algorithm 2 only; the iteration cap of
-  Algorithm 1 is `newton_steps`.
+  Default 1000, giving an increment of 0.01. The paper states neither
+  value; the authors' simulation code for Table 1 used `lambda_max = 5`
+  with an increment of 0.05, and the defaults here are those of the
+  package's first implementation. This is the resolution of the grid of
+  Algorithm 2 only; the iteration cap of Algorithm 1 is `newton_steps`.
 
 - newton_steps:
 
@@ -100,7 +110,8 @@ drbayes_control(
 - smoothing:
 
   Numeric. Kernel smoothing coefficient of Liu and West (2001), written
-  \\a\\ in the paper. A number in (0, 1\]. Default 0.99.
+  \\a\\ in the paper. A number in (0, 1\]. Default 0.99, the example
+  value of Algorithm 2 and the value in the authors' simulation code.
 
 - tol:
 
@@ -180,28 +191,34 @@ drbayes_control(
 
 - prune.rule:
 
-  Character. How pruning decides which particles to discard. `"weight"`,
-  the default, discards every particle whose weight against the untilted
-  posterior falls below `prune.w`, which is the rule the authors used.
-  `"quantile"` instead discards a fixed fraction `prune.q` at every
-  step, whatever the weights look like.
+  Character. How pruning decides which particles to discard.
+  `"absolute"`, the default, is the rule of the authors' simulation code
+  for Table 1: from the second step on, it discards every particle whose
+  unnormalised weight \\\exp(\lambda\_{t-1} B_n)\\ at the previous
+  tilting parameter is below `prune.abs`, unless that would discard
+  `prune.max` or more of them, in which case it discards nothing.
+  `"weight"` discards every particle whose normalised weight against the
+  untilted posterior falls below `prune.w` / S. `"quantile"` discards a
+  fixed fraction `prune.q` at every step, whatever the weights look
+  like. The paper itself states none of these rules.
 
 - prune.w:
 
-  Numeric, positive. Weight below which a particle is discarded, as a
-  multiple of \\1/S\\, the weight a particle would carry if all \\S\\ of
-  them were equal. Default 0.3, so a particle is discarded once it
-  carries less than three tenths of an equal share. Below about 0.12 the
-  threshold is never reached before the sweep stops, which makes
-  `pruning = TRUE` a no-op; above about 0.5 it discards so much that the
-  sweep ends after one or two steps. Expressing the threshold relative
-  to \\1/S\\ keeps its meaning when the number of draws changes. The
-  weight tested is \\\exp(\lambda B_n)\\ at the tilting parameter
-  reached so far, as in section 5.3.1, not the incremental weight of a
-  single step: the increments are all within a fraction of a percent of
-  \\1/S\\, so an absolute threshold on those would never discard
-  anything. The paper does not state the value of the threshold, so the
-  default is this package's choice; treat it as something to vary.
+  Numeric, positive. Read only when `prune.rule = "weight"`. Weight
+  below which a particle is discarded, as a multiple of \\1/S\\, the
+  weight a particle would carry if all \\S\\ of them were equal. Default
+  0.3, so a particle is discarded once it carries less than three tenths
+  of an equal share. Below about 0.12 the threshold is never reached
+  before the sweep stops, which makes `pruning = TRUE` a no-op; above
+  about 0.5 it discards so much that the sweep ends after one or two
+  steps. Expressing the threshold relative to \\1/S\\ keeps its meaning
+  when the number of draws changes. The weight tested is \\\exp(\lambda
+  B_n)\\ at the tilting parameter reached so far, as in section 5.3.1,
+  not the incremental weight of a single step: the increments are all
+  within a fraction of a percent of \\1/S\\, so an absolute threshold on
+  those would never discard anything. The paper does not state the value
+  of the threshold, so the default is this package's choice; treat it as
+  something to vary.
 
 - prune.q:
 
@@ -212,6 +229,21 @@ drbayes_control(
   discarding a fixed fraction of them moves its posterior mean much
   further than an increment of the tilting parameter does, which ends
   the sweep after very few steps; the note below says how much further.
+
+- prune.abs:
+
+  Numeric, positive. Threshold on the unnormalised weight
+  \\\exp(\lambda\_{t-1} B_n)\\ below which `prune.rule = "absolute"`
+  discards a particle. Default 1.5, the value in the authors' code.
+  Being absolute, it is not invariant to the units of the outcome:
+  \\B_n\\ is measured in those units, and the tilting parameter in their
+  reciprocal.
+
+- prune.max:
+
+  Numeric in (0, 1\]. When at least this fraction of the particles falls
+  below `prune.abs`, `prune.rule = "absolute"` discards none of them at
+  that step. Default 0.95, the value in the authors' code.
 
 - rhat_max:
 
@@ -252,9 +284,12 @@ per argument above.
 Algorithm 2 of Orihara, Momozaki and Sugasawa (2025). The paper leaves
 the choice of \\\bar{\lambda}\\, \\T\\ and the smoothing coefficient
 \\a\\ to the user, so hard-coding them would hide exactly the knobs the
-methodology asks you to tune. The defaults reproduce the settings used
-in the paper and are a reasonable starting point, not a recommendation
-to leave them alone.
+methodology asks you to tune. The paper does not report the values it
+used. The authors' simulation code for Table 1 used \\\bar{\lambda}\\ =
+5 and \\T\\ = 100; the defaults here, 10 and 1000, are those of the
+package's first implementation. They are a reasonable starting point,
+not a recommendation to leave them alone. The default number of retained
+draws, 8,000, is also smaller than the 20,000 of the paper's Table 1.
 
 `newton_steps` and `ess_frac` have no counterpart in the paper, which
 asks only that Algorithm 1 be iterated "until convergence" and does not
@@ -285,22 +320,27 @@ less at each application.
 
 Section 5.3.1 of the paper describes sample pruning as discarding the
 samples with small sampling weights, and stops there: it gives no
-threshold, and no rule for deriving one. `prune.q` is this package's
-reading of that sentence, discarding a fixed fraction of the particles
-at each step, and its default of 0.1 is a choice made here rather than a
-value reported in the paper.
+threshold, and no rule for deriving one. The default,
+`prune.rule = "absolute"` with `prune.abs = 1.5` and `prune.max = 0.95`,
+is the rule in the authors' simulation code for Table 1.
+`prune.rule = "weight"` and `prune.rule = "quantile"` are this package's
+own readings of the sentence, and their defaults, `prune.w = 0.3` and
+`prune.q = 0.1`, are choices made here rather than values reported in
+the paper.
 
 Pruning ends the sweep far sooner than its name suggests, and it is
 worth being clear about why. The particles it discards are those at one
 tail of the moment condition, the tail the tilting is pushing away from,
-so deleting `prune.q` of the cloud moves the posterior mean of \\B_n\\
-by a noticeable fraction of that mean's distance from zero, while one
-increment of the tilting parameter moves it by far less: at the default
-settings one pruning step is worth some tens of ordinary steps. Step 4
-of Algorithm 2 evaluates the constraint on the particles it currently
-holds, which are the pruned ones, so the sweep typically stops after one
-or two steps at a tilting parameter close to zero. How many steps it
-takes is then set by `prune.q` and hardly at all by `n_steps`.
+so deleting them moves the posterior mean of \\B_n\\ by far more than
+one increment of the tilting parameter does. Step 4 of Algorithm 2
+evaluates the constraint on the particles it currently holds, which are
+the pruned ones, so the sweep typically stops after a few steps at a
+tilting parameter close to zero. Under the default absolute rule a
+single pruned step can carry the mean of \\B_n\\ past zero altogether,
+and the sweep then stops on the change of sign without meeting the
+constraint, whatever `n_steps` is. Under the quantile rule one pruning
+step at `prune.q = 0.1` is worth some tens of ordinary steps, and the
+number of steps is set by `prune.q` and hardly at all by `n_steps`.
 
 The direction of that is what Section 5.3.1 asks for, since pruning
 exists precisely so that \\\lambda\\ need not grow large enough to
@@ -311,7 +351,8 @@ much tilting was done, and the returned cloud is a truncated one, so its
 credible intervals are narrower than those of the tilted posterior by an
 amount that reflects the deletion and not information gained. Fit both
 ways. A result that changes materially between `pruning = FALSE` and
-`pruning = TRUE`, or between `prune.q = 0.05` and `prune.q = 0.2`, is
+`pruning = TRUE`, or as the threshold of the rule in force changes
+(`prune.abs`, `prune.w` or `prune.q`, whichever `prune.rule` reads), is
 telling you that the tilting is being carried by a small part of the
 particle cloud, which is worth knowing.
 

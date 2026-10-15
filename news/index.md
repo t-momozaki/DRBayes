@@ -21,6 +21,14 @@ via Posterior Coupling”
   collects the tuning constants of Algorithm 2, which were hard-coded
   before, together with the stopping tolerance, the pruning rule of
   Section 5.3.1, the diagnostic thresholds and `keep_particles`.
+- Sample pruning (`drbayes_control(pruning = TRUE)`) uses by default the
+  rule of the authors’ simulation code for Table 1,
+  `prune.rule = "absolute"` with `prune.abs = 1.5` and
+  `prune.max = 0.95`. The `"weight"` and `"quantile"` rules are this
+  package’s own readings of Section 5.3.1, which states no threshold.
+- `$smc$stopped` says why the sweep of Algorithm 2 ended, and the
+  warning raised when the moment condition is not met names the remedy
+  that fits.
 - [`drbayes_sensitivity()`](https://t-momozaki.github.io/DRBayes/reference/drbayes_sensitivity.md)
   implements the sensitivity analysis of Algorithm 3 for unmeasured
   confounding, and

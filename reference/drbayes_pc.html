@@ -294,7 +294,12 @@ This is the doubly robust estimand and the quantity to report.</p></dd>
 the tolerance <code>tol</code> it was compared against, the number of steps taken
 <code>n_steps</code> out of <code>max_steps</code>, and <code>converged</code>. When
 <code>converged</code> is FALSE the moment condition was never satisfied and the
-<code>pc</code> draws carry no double robustness guarantee.</p></dd>
+<code>pc</code> draws carry no double robustness guarantee. For
+<code>method = "smc"</code>, <code>stopped</code> says why the sweep ended:
+<code>"tolerance"</code> when the constraint was met, <code>"sign"</code> when the
+posterior mean of the moment condition changed sign between two steps,
+and <code>"grid"</code> when it reached <code>lambda_max</code>; it is <code>NA</code>
+when the sweep was skipped or Algorithm 1 ran.</p></dd>
 
 <dt>diagnostics</dt>
 <dd><p>Data frame of convergence diagnostics, one row per parameter of each

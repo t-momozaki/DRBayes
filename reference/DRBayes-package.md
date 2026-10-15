@@ -4,11 +4,11 @@ Bayesian doubly robust estimation of average treatment effects via
 posterior coupling, in which the outcome-model and propensity-score
 posteriors are linked so that the doubly robust moment condition is
 satisfied. Gibbs samplers for linear, logistic and probit models under
-conjugate or horseshoe priors are provided, and posterior draws produced
-by external Bayesian software can be supplied instead. A Bayesian
-bootstrap estimator and utilities for replicated simulation studies are
-also included. The methodology is described in Orihara, Momozaki and
-Sugasawa (2025)
+normal or horseshoe priors are provided, and posterior draws produced by
+external Bayesian software can be supplied instead. A Bayesian bootstrap
+estimator and utilities for replicated simulation studies are also
+included. The methodology is described in Orihara, Momozaki and Sugasawa
+(2025)
 [doi:10.48550/arXiv.2506.04868](https://doi.org/10.48550/arXiv.2506.04868)
 .
 
@@ -24,11 +24,11 @@ Useful links:
 
 ## Author
 
-**Maintainer**: Tomotaka Momozaki <t_momozaki@rs.tus.ac.jp>
+**Maintainer**: Tomotaka Momozaki <momozaki.stat@gmail.com>
 
 Authors:
 
-- Tomotaka Momozaki <t_momozaki@rs.tus.ac.jp>
+- Tomotaka Momozaki <momozaki.stat@gmail.com>
 
 - Shunichiro Orihara
 

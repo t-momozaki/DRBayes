@@ -805,10 +805,10 @@ sessionInfo()
 #> [1] dplyr_1.2.1   ggplot2_4.0.3 DRBayes_0.1.1
 #> 
 #> loaded via a namespace (and not attached):
-#>  [1] tensorA_0.36.2.1     future_1.75.0        sass_0.4.10         
-#>  [4] generics_0.1.4       listenv_1.0.0        digest_0.6.39       
+#>  [1] tensorA_0.36.2.1     future_1.76.0        sass_0.4.10         
+#>  [4] generics_0.1.4       listenv_1.1.0        digest_0.6.39       
 #>  [7] magrittr_2.0.5       evaluate_1.0.5       grid_4.6.1          
-#> [10] RColorBrewer_1.1-3   mvtnorm_1.4-2        instantiate_0.2.3   
+#> [10] RColorBrewer_1.1-3   mvtnorm_1.4-2        instantiate_0.2.4   
 #> [13] fastmap_1.2.0        jsonlite_2.0.0       processx_3.9.0      
 #> [16] backports_1.5.1      ps_1.9.3             extraDistr_1.10.0.5 
 #> [19] purrr_1.2.2          scales_1.4.0         codetools_0.2-20    
@@ -817,13 +817,13 @@ sessionInfo()
 #> [28] parallelly_1.48.0    withr_3.0.3          cachem_1.1.0        
 #> [31] yaml_2.3.12          otel_0.2.0           parallel_4.6.1      
 #> [34] tools_4.6.1          checkmate_2.3.4      pgdraw_1.1          
-#> [37] globals_0.19.1       vctrs_0.7.3          posterior_1.7.0     
+#> [37] globals_0.20.0       vctrs_0.7.3          posterior_1.7.0     
 #> [40] R6_2.6.1             lifecycle_1.0.5      fs_2.1.0            
 #> [43] furrr_0.4.0          ragg_1.5.2           pkgconfig_2.0.3     
 #> [46] desc_1.4.3           callr_3.8.0          pkgdown_2.2.1       
 #> [49] pillar_1.11.1        bslib_0.12.0         gtable_0.3.6        
 #> [52] RcppTN_0.2-2         glue_1.8.1           Rcpp_1.1.2          
-#> [55] systemfonts_1.3.2    xfun_0.60            tibble_3.3.1        
+#> [55] systemfonts_1.3.2    xfun_0.61            tibble_3.3.1        
 #> [58] tidyselect_1.2.1     knitr_1.52           farver_2.1.2        
 #> [61] htmltools_0.5.9      rmarkdown_2.32       compiler_4.6.1      
 #> [64] S7_0.2.2             distributional_0.9.0

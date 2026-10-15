@@ -281,7 +281,12 @@ An object of class `"DRBayes"`, a list containing:
   condition, the tolerance `tol` it was compared against, the number of
   steps taken `n_steps` out of `max_steps`, and `converged`. When
   `converged` is FALSE the moment condition was never satisfied and the
-  `pc` draws carry no double robustness guarantee.
+  `pc` draws carry no double robustness guarantee. For `method = "smc"`,
+  `stopped` says why the sweep ended: `"tolerance"` when the constraint
+  was met, `"sign"` when the posterior mean of the moment condition
+  changed sign between two steps, and `"grid"` when it reached
+  `lambda_max`; it is `NA` when the sweep was skipped or Algorithm 1
+  ran.
 
 - diagnostics:
 

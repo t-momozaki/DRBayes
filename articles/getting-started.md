@@ -686,7 +686,7 @@ head(result_continuous$diagnostics)
 #> 3 outcome          X1 0.8384571 0.09177170 0.9991016 1748.387 1633.266
 #> 4 outcome          X2 0.6313758 0.05302254 1.0005410 1774.558 1671.412
 #> 5 outcome          X3 0.3748920 0.10272254 0.9996299 1813.035 1837.535
-#> 6 outcome        A:X1 0.2979509 0.11485260 1.0001207 1715.109 1672.937
+#> 6 outcome        A:X1 0.2979509 0.11485260 1.0000999 1715.109 1672.937
 #>     mcse_mean
 #> 1 0.002276716
 #> 2 0.002597107
@@ -709,7 +709,7 @@ tolerance that was compared against, and whether the two met.
 ``` r
 
 str(result_continuous$smc)
-#> List of 10
+#> List of 11
 #>  $ lambda         : num -3.51
 #>  $ B_mean         : num 0.000906
 #>  $ B_mean_weighted: num NA
@@ -720,6 +720,7 @@ str(result_continuous$smc)
 #>  $ ess            : num NA
 #>  $ n_ancestors_min: int 1100
 #>  $ n_distinct     : int NA
+#>  $ stopped        : chr "tolerance"
 ```
 
 [`print()`](https://rdrr.io/r/base/print.html) puts both summaries next
@@ -1149,9 +1150,11 @@ interval for.
 
 #### When the sweep does not converge
 
-`converged = FALSE` means the sweep ran out of tilting parameter without
-driving the moment condition below the tolerance. The `pc` draws it
-returns are still draws from *a* tilted posterior, but not one that
+`converged = FALSE` means the sweep ended without driving the moment
+condition below the tolerance, and `fit$smc$stopped` says how: `"grid"`
+when it ran out of tilting parameter, `"sign"` when the posterior mean
+of the moment condition changed sign between two steps. The `pc` draws
+it returns are still draws from *a* tilted posterior, but not one that
 satisfies the constraint, so Theorem 1 does not apply to them and they
 should not be reported as doubly robust.
 
@@ -1160,9 +1163,19 @@ bounded by `lambda_max`, and how many posterior draws that grid is
 evaluated on does not change where the moment condition can be met. What
 to try instead, roughly in order of how often it is the answer:
 
-- **Widen the search.** `drbayes_control(lambda_max = 20)` doubles the
-  range. A large fitted `lambda` at the boundary is the signature of a
-  tilt that wants to go further than it was allowed.
+- **Widen the search,** when `stopped` is `"grid"`.
+  `drbayes_control(lambda_max = 20, n_steps = 2000)` doubles the range
+  and keeps the increment. A large fitted `lambda` at the boundary is
+  the signature of a tilt that wants to go further than it was allowed.
+  The tilting parameter the constraint needs is measured in the
+  reciprocal of the outcome’s units, and it grows with the sample size
+  when the outcome model is misspecified, so no default range suits
+  every data set.
+- **Take smaller steps,** when `stopped` is `"sign"`: a step overshot
+  the root, and a larger `n_steps` shortens the steps. With
+  `pruning = TRUE`, a single pruned step can carry the mean past zero
+  however small the steps are, so compare the result with
+  `pruning = FALSE` instead.
 - **Look at the propensity score.** A moment condition that cannot be
   satisfied usually means the weights are being dominated by a handful
   of observations. `range(fitted(glm(ps.formula, binomial, data)))`
@@ -1298,19 +1311,19 @@ sessionInfo()
 #>  [1] gtable_0.3.6        jsonlite_2.0.0      RcppTN_0.2-2       
 #>  [4] dplyr_1.2.1         compiler_4.6.1      tidyselect_1.2.1   
 #>  [7] Rcpp_1.1.2          parallel_4.6.1      jquerylib_0.1.4    
-#> [10] globals_0.19.1      systemfonts_1.3.2   scales_1.4.0       
+#> [10] globals_0.20.0      systemfonts_1.3.2   scales_1.4.0       
 #> [13] textshaping_1.0.5   yaml_2.3.12         fastmap_1.2.0      
 #> [16] R6_2.6.1            labeling_0.4.3      generics_0.1.4     
-#> [19] knitr_1.52          pgdraw_1.1          future_1.75.0      
+#> [19] knitr_1.52          pgdraw_1.1          future_1.76.0      
 #> [22] tibble_3.3.1        desc_1.4.3          bslib_0.12.0       
 #> [25] pillar_1.11.1       RColorBrewer_1.1-3  rlang_1.3.0        
-#> [28] cachem_1.1.0        xfun_0.60           fs_2.1.0           
+#> [28] cachem_1.1.0        xfun_0.61           fs_2.1.0           
 #> [31] sass_0.4.10         S7_0.2.2            otel_0.2.0         
 #> [34] cli_3.6.6           withr_3.0.3         extraDistr_1.10.0.5
 #> [37] pkgdown_2.2.1       magrittr_2.0.5      digest_0.6.39      
 #> [40] grid_4.6.1          mvtnorm_1.4-2       lifecycle_1.0.5    
 #> [43] vctrs_0.7.3         evaluate_1.0.5      glue_1.8.1         
-#> [46] listenv_1.0.0       furrr_0.4.0         farver_2.1.2       
+#> [46] listenv_1.1.0       furrr_0.4.0         farver_2.1.2       
 #> [49] codetools_0.2-20    ragg_1.5.2          parallelly_1.48.0  
 #> [52] purrr_1.2.2         rmarkdown_2.32      tools_4.6.1        
 #> [55] pkgconfig_2.0.3     htmltools_0.5.9

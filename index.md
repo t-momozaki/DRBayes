@@ -626,4 +626,4 @@ details.
 
 For more information, visit our [GitHub
 repository](https://github.com/t-momozaki/DRBayes) or contact the
-maintainer at <t_momozaki@rs.tus.ac.jp>.
+maintainer at <momozaki.stat@gmail.com>.

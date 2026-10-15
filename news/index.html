@@ -54,6 +54,9 @@
 <code>method</code> chooses between the two algorithms of the paper: <code>"smc"</code> (default) is Algorithm 2, <code>"is"</code> is the single importance sampling step of Algorithm 1.</li>
 <li>
 <code><a href="../reference/drbayes_control.html">drbayes_control()</a></code> collects the tuning constants of Algorithm 2, which were hard-coded before, together with the stopping tolerance, the pruning rule of Section 5.3.1, the diagnostic thresholds and <code>keep_particles</code>.</li>
+<li>Sample pruning (<code>drbayes_control(pruning = TRUE)</code>) uses by default the rule of the authors’ simulation code for Table 1, <code>prune.rule = "absolute"</code> with <code>prune.abs = 1.5</code> and <code>prune.max = 0.95</code>. The <code>"weight"</code> and <code>"quantile"</code> rules are this package’s own readings of Section 5.3.1, which states no threshold.</li>
+<li>
+<code>$smc$stopped</code> says why the sweep of Algorithm 2 ended, and the warning raised when the moment condition is not met names the remedy that fits.</li>
 <li>
 <code><a href="../reference/drbayes_sensitivity.html">drbayes_sensitivity()</a></code> implements the sensitivity analysis of Algorithm 3 for unmeasured confounding, and <code><a href="../reference/drbayes_select.html">drbayes_select()</a></code> the confounder selection of Algorithm 4.</li>
 <li>
