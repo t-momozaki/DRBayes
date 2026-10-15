@@ -21,10 +21,11 @@
 # The two that this package does not implement, Bang and Robins's and Luo et
 # al.'s, live in scripts/simulation_common.R.
 #
-# The sample pruning row is run and printed but does not reproduce Table 1's
-# last row: at the reduced settings below pruning discards little or nothing,
-# so the row comes out on top of the unpruned one instead of separating from
-# it. The output says so where it prints the table.
+# The sample pruning row is run, by the rule of the authors' own simulation
+# code, and printed, but does not reproduce Table 1's last row: at the reduced
+# settings below the rule acts in most fits yet moves the estimate by less than
+# its Monte Carlo error, so the row comes out on top of the unpruned one instead
+# of separating from it. The output says so where it prints the table.
 #
 # References
 #   Bang, H., & Robins, J. M. (2005). Doubly robust estimation in missing data
@@ -394,13 +395,15 @@ writeLines(c(
   "proposed method, against the published 0.397 and 0.396.",
   "",
   "The Proposed (pruning) row does not reproduce the last row of Table 1, and",
-  "the ABias column is not an exception to that. Pruning discards particles",
-  "whose weight against the untilted posterior falls below prune.w / S, and",
-  "at these settings that is little or nothing, so the row lands on the",
-  "Proposed row instead of separating from it as the published pair does.",
-  "Section 5.3.1 says only that samples with small sampling weights are",
-  "discarded, and gives no threshold; what counts as small is therefore",
-  "drbayes_control()'s reading and not the paper's, and ?drbayes_control says",
-  "so under the pruning threshold. Choosing prune.w or prune.q to make the",
-  "published number appear would be fitting the setting to the answer, so",
-  "they are left at their defaults and the row is reported as not reproduced."))
+  "the ABias column is not an exception to that. Section 5.3.1 says only that",
+  "samples with small sampling weights are discarded, and gives no threshold.",
+  "Pruning here follows the rule of the authors' own simulation code, the",
+  "default of drbayes_control(): from the second step, discard the particles",
+  "whose exp(lambda B_n) at the previous tilting parameter is below 1.5,",
+  "unless that is 95 per cent of them or more. At these settings it acts in",
+  "most fits but moves the estimate by less than its Monte Carlo error, as the",
+  "paired difference above shows, so the row lands on the Proposed row instead",
+  "of separating from it as the published pair does. Tuning prune.abs until",
+  "the published number appeared would be fitting the setting to the answer,",
+  "so it is left at the authors' value and the row is reported as not",
+  "reproduced."))

@@ -863,8 +863,10 @@ select_tilting <- function(betas.ps, betas.otc, ps_update, otc_update, d,
             format(control$lambda_max, digits = 3), " without solving ",
             "equation (3.9) on the selected covariates, so the tilting ",
             "parameter returned is that bound and not a solution. Prefer ",
-            "method = \"smc\", with drbayes_control(pruning = TRUE) if the ",
-            "constraint is still not met.")
+            "method = \"smc\". If the constraint is still not met, ",
+            "drbayes_control(pruning = TRUE) is the remedy of Section 5.3.1, ",
+            "but a pruned step can carry the mean of B_n well past zero, so ",
+            "compare the result with pruning = FALSE.")
   }
 
   degeneracy <- tilting_degeneracy(ess, n_ancestors_min, S, control$ess_frac)
@@ -997,13 +999,9 @@ select_smc <- function(betas.ps, betas.otc, update, BB, d, control, tol,
     # Incremental importance weights exp{(lambda_t - lambda_{t-1}) B_n^S}
     ww <- normalised_weights(lam.diff[ll] * BB)
 
-    # Pruning judges a particle by its weight against the untilted posterior at
-    # the tilting parameter reached so far, not by the incremental weight, so
-    # the sweep prunes here by exactly the rule [tilt_smc()] uses.
-    if (isTRUE(control$pruning)) {
-      cumulative <- normalised_weights(lam.s[ll + 1L] * BB)
-      ww <- prune_weights(ww, cumulative, control)
-    }
+    # The same pruning step as [tilt_smc()], through the same function, so the
+    # two sweeps cannot prune by different rules or with different inputs.
+    ww <- prune_step(ww, BB, lam.s, ll, control)
 
     # The kernel is centred on the cloud at t - 1, so its mean and covariance
     # are taken before the resampling replaces it.

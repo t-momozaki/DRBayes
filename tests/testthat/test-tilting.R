@@ -240,7 +240,7 @@ test_that("the tilting diagnostics carry the effective sample size", {
 
   expect_named(is$smc, c("lambda", "B_mean", "B_mean_weighted", "tol",
                          "n_steps", "max_steps", "converged", "ess",
-                         "n_ancestors_min", "n_distinct"))
+                         "n_ancestors_min", "n_distinct", "stopped"))
   # A well behaved reweighting keeps nearly every draw, and the sweep's
   # resampling keeps roughly 1 - 1/e of the particles distinct.
   expect_gt(is$smc$ess, 0.5 * S)
@@ -478,7 +478,9 @@ test_that("pruning refuses to leave fewer than two particles", {
   # share, so it removes nothing at all from weights that are already even.
   even <- rep(1 / 20, 20)
   expect_identical(
-    prune_weights(even, even, drbayes_control(pruning = TRUE, prune.w = 0.3)),
+    prune_weights(even, even, drbayes_control(pruning = TRUE,
+                                              prune.rule = "weight",
+                                              prune.w = 0.3)),
     even)
 })
 
@@ -587,4 +589,252 @@ test_that("the new tilting settings are validated", {
   expect_error(drbayes_control(ess_frac = 1.5), "ess_frac")
   expect_error(drbayes_control(ess_frac = "half"), "ess_frac")
   expect_identical(drbayes_control(ess_frac = 1)$ess_frac, 1)
+})
+
+test_that("Algorithm 1 solves equation (3.9) at the root uniroot finds", {
+  # Equation (3.9) asks for the lambda at which the exp(lambda B_n)-weighted
+  # mean of B_n is zero. Brent's method on that mean is an implementation that
+  # shares nothing with the damped Newton iteration, so agreement checks the
+  # root itself rather than the path taken to it.
+  set.seed(21)
+  BB <- stats::rnorm(2000, mean = 0.3, sd = 1)
+  out <- tilt_is_index(BB, drbayes_control(), tol = 1e-10)
+
+  weighted_mean <- function(lambda) {
+    w <- exp(lambda * BB - max(lambda * BB))
+    sum(w * BB) / sum(w)
+  }
+  root <- stats::uniroot(weighted_mean, c(-10, 10), tol = 1e-12)$root
+
+  expect_equal(out$lambda, root, tolerance = 1e-6)
+  expect_lt(abs(out$B_mean_weighted), 1e-10)
+})
+
+test_that("step 1 of Algorithm 2 weights by exp{(lambda_t - lambda_{t-1}) B_n}", {
+  BB <- c(-2, -0.5, 0, 1, 3)
+  increment <- 0.37
+  expect_equal(normalised_weights(increment * BB),
+               exp(increment * BB) / sum(exp(increment * BB)))
+
+  # The log weights grow with n, so exp() of them overflows long before the
+  # normalised weights would. The weights must stay finite and sum to one.
+  big <- normalised_weights(800 * BB)
+  expect_false(anyNA(big))
+  expect_equal(sum(big), 1)
+  expect_equal(which.max(big), which.max(BB))
+})
+
+test_that("the Liu and West kernel of step 3 keeps the mean and covariance", {
+  # With a tilting increment too small to move any weight, step 2 resamples
+  # uniformly and step 3 shrinks towards the mean by a and adds noise of
+  # covariance (1 - a^2) Sigma, which leaves the first two moments where they
+  # were. a = 0.5 rather than the default 0.99, so that each part of the kernel
+  # carries real weight: at 0.99 a kernel that forgot the (1 - a) mean term
+  # would move the mean by only one per cent. Each coordinate is checked on its
+  # own, to about four Monte Carlo standard errors at S = 20000.
+  set.seed(31)
+  S <- 20000
+  betas.ps  <- matrix(stats::rnorm(S, sd = 0.2), ncol = 1L)
+  betas.otc <- matrix(stats::rnorm(S, mean = 1, sd = 0.5), ncol = 1L)
+  d <- tilting_data(Z.lm = matrix(1, 1L, 1L), Z.ps = matrix(1, 1L, 1L),
+                    A = 1, Y = 0,
+                    inverse_link = function(x) x,
+                    ps_inverse_link = stats::plogis,
+                    ps_formula_text = "A ~ 1")
+  BB <- moment_ipw(betas.ps, betas.otc, d)
+  before <- cbind(betas.ps, betas.otc)
+
+  ctrl <- drbayes_control(lambda_max = 1e-8, n_steps = 1, smoothing = 0.5)
+  out <- tilt_smc(betas.ps, betas.otc, BB, d, ctrl, tol = 1e-12,
+                  direction = 1, moment_fn = moment_ipw)
+  after <- cbind(out$betas.ps, out$betas.otc)
+
+  expect_true(all(abs(colMeans(after) - colMeans(before)) < 0.02))
+  expect_true(all(abs(diag(stats::cov(after)) / diag(stats::cov(before)) - 1) <
+                    0.05))
+})
+
+test_that("a sweep stopped by a sign change is not reported as converged", {
+  # Half the draws at -1 and half at +1, with the mean just below zero. The
+  # first of two steps, to lambda = 5, multiplies the weight of every +1 draw by
+  # about 22000 relative to a -1 draw, so the resampled mean jumps to near +1:
+  # the sign changes and the sweep must stop there, one step short of the end
+  # of the grid, without claiming the constraint is met. The smoothing is
+  # switched off so that the particles keep exactly the values they started at.
+  fx <- moment_fixture(c(rep(-1, 50), rep(1, 49)))
+  ctrl <- drbayes_control(lambda_max = 10, n_steps = 2, smoothing = 1)
+
+  set.seed(41)
+  res <- with_warnings(run_tilting(fx$betas.ps, fx$betas.otc, fx$d, ctrl,
+                                   tol = 1e-6))
+
+  expect_identical(res$value$smc$n_steps, 1L)
+  expect_gt(res$value$smc$B_mean, 0)
+  expect_false(res$value$smc$converged)
+  expect_true(any(grepl("did not satisfy the moment condition",
+                        res$warnings)))
+})
+
+test_that("a constraint already met returns the untilted draws untouched", {
+  # Lemma 1: when the posterior mean of B_n is already within tolerance there is
+  # nothing to tilt, so the draws come back as they went in, with lambda zero
+  # and no step taken. The mean here is 0.002, not zero, against a default
+  # tolerance of sd(B_n) / sqrt(S), about 0.35: inside the tolerance but far
+  # enough from zero that the Newton direction exists and the sweep could run.
+  fx <- moment_fixture(c(-1, 1, -0.5, 0.5, 0.01))
+  out <- run_tilting(fx$betas.ps, fx$betas.otc, fx$d, drbayes_control())
+
+  expect_identical(out$betas.otc, fx$betas.otc)
+  expect_identical(out$betas.ps, fx$betas.ps)
+  expect_identical(out$smc$n_steps, 0L)
+  expect_equal(out$smc$lambda, 0)
+  expect_true(out$smc$converged)
+})
+
+# The pruning loop of the authors' simulation code for Table 1 (simu_n500.R,
+# received from Orihara on 2026-10-15), transcribed with the smoothing switched
+# off (a = 1) on a moment condition that is its own parameter. It draws from the
+# random number stream in the same order as tilt_smc(): one weighted resample,
+# then S x 2 normals for the zero-scaled smoothing noise.
+authors_pruning_sweep <- function(BB0, lam.s) {
+  S <- length(BB0)
+  BB4 <- BB0
+  BB_mean4 <- mean(BB0)
+  pruned <- 0L
+  for (ll in 1:(length(lam.s) - 1)) {
+    val2 <- (lam.s[ll + 1] - lam.s[ll]) * BB4
+    val2 <- val2 - max(val2)
+    ww4 <- exp(val2) / sum(exp(val2))
+    if (ll >= 2 & sum(exp(lam.s[ll] * BB4) < 1.5) < 0.95 * S) {
+      ww4[exp(lam.s[ll] * BB4) < 1.5] <- 0
+      pruned <- pruned + 1L
+    }
+    idx <- sample(1:S, size = S, replace = TRUE, prob = ww4)
+    invisible(matrix(stats::rnorm(S * 2), S))
+    BB4 <- BB4[idx]
+    if (mean(BB4) * BB_mean4 < 0) break
+  }
+  list(BB = BB4, steps = ll, pruned = pruned)
+}
+
+test_that("the absolute rule discards particles whose exp(lambda_{t-1} B_n) is below prune.abs", {
+  ctrl <- drbayes_control(pruning = TRUE)
+  expect_identical(ctrl$prune.rule, "absolute")
+  ww <- rep(1 / 20, 20)
+  log_previous <- log(c(rep(1, 10), rep(2, 10)))
+  expect_equal(prune_weights(ww, ww, ctrl, log_previous = log_previous,
+                             step = 2L),
+               c(rep(0, 10), rep(0.1, 10)))
+})
+
+test_that("the absolute rule waits for step 2 and stands down before discarding 95 per cent", {
+  ctrl <- drbayes_control(pruning = TRUE)
+  ww <- rep(1 / 20, 20)
+  log_previous <- log(c(rep(1, 10), rep(2, 10)))
+  expect_identical(prune_weights(ww, ww, ctrl, log_previous = log_previous,
+                                 step = 1L), ww)
+
+  # 19 of 20 below the threshold is 95 per cent, which the authors' code treats
+  # as too many to discard; 18 of 20 is not.
+  nineteen <- log(c(rep(1, 19), 2))
+  expect_identical(prune_weights(ww, ww, ctrl, log_previous = nineteen,
+                                 step = 2L), ww)
+  eighteen <- log(c(rep(1, 18), 2, 2))
+  expect_equal(prune_weights(ww, ww, ctrl, log_previous = eighteen, step = 2L),
+               c(rep(0, 18), 0.5, 0.5))
+})
+
+test_that("the default pruning rule reproduces the authors' Table 1 code", {
+  set.seed(71)
+  BB0 <- stats::rnorm(150, mean = -2, sd = 3)
+  fx <- moment_fixture(BB0)
+  ctrl <- drbayes_control(lambda_max = 5, n_steps = 100, smoothing = 1,
+                          pruning = TRUE)
+
+  set.seed(72)
+  authors <- authors_pruning_sweep(BB0, seq(0, 5, length.out = 101))
+  set.seed(72)
+  out <- tilt_smc(fx$betas.ps, fx$betas.otc, BB0, fx$d, ctrl, tol = 1e-12,
+                  direction = 1, moment_fn = moment_ipw)
+
+  expect_gt(authors$pruned, 0L)
+  expect_identical(out$n_steps, authors$steps)
+  expect_equal(out$BB, authors$BB)
+})
+
+test_that("a sweep that runs out of grid says which settings to raise", {
+  # Every draw but one sits below zero and the grid ends at 0.01, so the sweep
+  # takes both its steps without the mean of B_n coming near zero.
+  fx <- moment_fixture(c(rep(-1, 40), 1))
+  ctrl <- drbayes_control(lambda_max = 0.01, n_steps = 2)
+  set.seed(81)
+  res <- with_warnings(run_tilting(fx$betas.ps, fx$betas.otc, fx$d, ctrl,
+                                   tol = 1e-6))
+  said <- paste(res$warnings, collapse = "\n")
+
+  expect_match(said, "did not satisfy the moment condition", fixed = TRUE)
+  expect_match(said, "reached lambda_max = 0.01", fixed = TRUE)
+  expect_match(said, "grows with the sample size", fixed = TRUE)
+  expect_match(said, "n_steps in proportion", fixed = TRUE)
+  expect_false(grepl("changed sign", said, fixed = TRUE))
+})
+
+test_that("a sweep stopped by a sign change says to take smaller steps", {
+  fx <- moment_fixture(c(rep(-1, 50), rep(1, 49)))
+  ctrl <- drbayes_control(lambda_max = 10, n_steps = 2, smoothing = 1)
+  set.seed(41)
+  res <- with_warnings(run_tilting(fx$betas.ps, fx$betas.otc, fx$d, ctrl,
+                                   tol = 1e-6))
+  said <- paste(res$warnings, collapse = "\n")
+
+  expect_match(said, "did not satisfy the moment condition", fixed = TRUE)
+  expect_match(said, "changed sign", fixed = TRUE)
+  expect_match(said, "increase n_steps", fixed = TRUE)
+  expect_false(grepl("reached lambda_max", said, fixed = TRUE))
+})
+
+test_that("a pruned sweep that overshoots points at the pruning, not at n_steps", {
+  # One pruned step carries the mean of B_n from about -2 to well above zero,
+  # however small the steps are, so taking smaller steps is not the remedy.
+  set.seed(71)
+  BB0 <- stats::rnorm(150, mean = -2, sd = 3)
+  fx <- moment_fixture(BB0)
+  ctrl <- drbayes_control(lambda_max = 5, n_steps = 100, smoothing = 1,
+                          pruning = TRUE)
+  set.seed(72)
+  res <- with_warnings(run_tilting(fx$betas.ps, fx$betas.otc, fx$d, ctrl,
+                                   tol = 1e-6))
+  said <- paste(res$warnings, collapse = "\n")
+
+  expect_match(said, "changed sign", fixed = TRUE)
+  expect_match(said, "pruning = FALSE", fixed = TRUE)
+  expect_false(grepl("increase n_steps", said, fixed = TRUE))
+})
+
+test_that("a sign change at the last grid point is not reported as running out of grid", {
+  fx <- moment_fixture(c(rep(-1, 50), rep(1, 49)))
+  ctrl <- drbayes_control(lambda_max = 5, n_steps = 1, smoothing = 1)
+  set.seed(41)
+  res <- with_warnings(run_tilting(fx$betas.ps, fx$betas.otc, fx$d, ctrl,
+                                   tol = 1e-6))
+  said <- paste(res$warnings, collapse = "\n")
+
+  expect_match(said, "changed sign", fixed = TRUE)
+  expect_false(grepl("reached lambda_max", said, fixed = TRUE))
+  expect_identical(res$value$smc$stopped, "sign")
+})
+
+test_that("advice to prune always says to check it against pruning = FALSE", {
+  # Pruning by the default rule can carry the mean of B_n well past zero in a
+  # single step, so no message may offer it as a remedy without saying so.
+  fx <- moment_fixture(c(rep(-1, 99), 1))
+  res <- with_warnings(run_tilting(fx$betas.ps, fx$betas.otc, fx$d,
+                                   drbayes_control(lambda_max = 1),
+                                   tol = 1e-6, method = "is"))
+  said <- paste(res$warnings, collapse = "\n")
+  expect_match(said, "reached the bound lambda_max = 1", fixed = TRUE)
+  expect_match(said, "compare the result with pruning = FALSE", fixed = TRUE)
+
+  expect_error(tilt_is_index(c(1, 2, 3), drbayes_control(), tol = 1e-6),
+               "compare the result with pruning = FALSE", fixed = TRUE)
 })

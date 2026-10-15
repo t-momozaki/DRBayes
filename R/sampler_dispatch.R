@@ -2,10 +2,11 @@
 #'
 #' The model to fit is already fully described by the formula, the family and
 #' the link, and given those the sampling algorithm follows: a Gaussian
-#' likelihood with an identity link has a conjugate Gibbs sampler, a logistic
-#' one is handled by Polya-Gamma augmentation, and a probit one by the Albert
-#' and Chib latent variable scheme. The only choice left to the user is the
-#' prior, which is why that, and not a function, is what they pass.
+#' likelihood with an identity link has a conditionally conjugate Gibbs
+#' sampler, a logistic one is handled by Polya-Gamma augmentation, and a probit
+#' one by the Albert and Chib latent variable scheme. The only choice left to
+#' the user is the prior, which is why that, and not a function, is what they
+#' pass.
 #'
 #' @param link One of `"identity"`, `"logit"` or `"probit"`.
 #' @param prior One of `"normal"` or `"horseshoe"`.

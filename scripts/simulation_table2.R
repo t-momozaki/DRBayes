@@ -20,9 +20,15 @@
 # What the paper leaves open, and what this script therefore has to choose
 # -----------------------------------------------------------------------
 # Section 5.4 is five sentences and the Table 2 footnote two lines. Between
-# them they name no software, no number of trees, no draws, no burn-in and no
-# prior hyperparameter, and never say whether BART was fit once with the
-# treatment as a covariate or separately within each arm. Three consequences:
+# them they name no software, no number of trees, no burn-in and no prior
+# hyperparameter, and never say whether BART was fit once with the treatment
+# as a covariate or separately within each arm; the footnote gives only the
+# 10,000 of 20,000 posterior draws used. The authors' own code, obtained since,
+# used the BART package's wbart with its default 200 trees, one chain of 20,000
+# draws after 5,000 burn-in, and one fit on the treatment, the covariates and
+# their products. This script keeps its own choices, set out below, because a
+# single chain leaves much of the reported spread to the sampler. Three
+# consequences of the paper's silence:
 #
 #   * Every BART hyperparameter below is written out even where it equals the
 #     dbarts default, so that the record is complete.

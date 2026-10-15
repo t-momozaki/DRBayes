@@ -20,7 +20,7 @@ script says so where it prints its results.
 | Script | Reproduces | Minutes |
 | --- | --- | --- |
 | `simulation_table1.R` | Sections 5.1 to 5.3, Table 1, Figure 1 | 1.8-1.9 |
-| `simulation_table2.R` | Section 5.4, Table 2, BART outcome model | pending |
+| `simulation_table2.R` | Section 5.4, Table 2, BART outcome model | hours; see below |
 | `simulation_appendix_d1.R` | Appendix D.1, high dimensions | 0.4 |
 | `simulation_appendix_d2.R` | Appendix D.2, Table 3 | 0.6 |
 | `application_rhc.R` | Section 7.3, right heart catheterization | 1.8-1.9 |
@@ -42,20 +42,28 @@ gives byte-identical tables.
 
 ## What is not reproduced
 
-`simulation_table2.R` does not run yet. `drbayes_pc()` takes posterior draws of
-the outcome model's coefficients, and a BART posterior has none; coupling it
-needs an interface that takes draws of the fitted mean instead. The script is
-written against that interface, stops with an explanation until it exists, and
-has never been run.
+`simulation_table2.R` runs, through the `outcome.mu`, `outcome.mu1` and
+`outcome.mu0` arguments of `drbayes_pc()`, which take draws of the fitted
+means of a BART outcome model. It does not reproduce Table 2. Section 5.4
+names no BART software, number of trees, burn-in, prior or number of chains.
+The authors' own code, obtained since, used the BART package's wbart with its
+default 200 trees, one chain of 20,000 draws after 5,000 burn-in, and the
+treatment interacted with the covariates. This script instead uses dbarts,
+runs four chains and sweeps the number of trees, because a single chain leaves
+much of the reported spread to the sampler; its header sets out each choice.
+Unlike the other scripts it takes hours rather than minutes at the full
+settings; environment variables set the replications, sample sizes, tree
+counts and workers, so a short check runs the same code.
 
 The `Proposed (pruning)` rows of Table 1 and of Table 3 are not reproduced.
-Both scripts do run `drbayes_control(pruning = TRUE)` and print the row, but
-at the reduced settings the sweep discards little or nothing, so the row comes
-out on top of the unpruned one rather than separating from it as the published
-pair does. Section 5.3.1 gives no discard threshold, so what counts as a small
-sampling weight is `drbayes_control()`'s reading rather than the paper's, and
-tuning it until the published number appeared would be fitting the setting to
-the answer. Each script says so where it prints the row.
+Both scripts run `drbayes_control(pruning = TRUE)`, whose default is the
+pruning rule of the authors' own simulation code, and print the row. At the
+reduced settings the rule acts in most fits but moves the estimate by less than
+its Monte Carlo error, so the row comes out on top of the unpruned one rather
+than separating from it as the published pair does. Section 5.3.1 gives no
+discard threshold; the rule's settings are left at the authors' values rather
+than tuned until the published number appeared, which would be fitting the
+setting to the answer. Each script says so where it prints the row.
 
 `simulation_appendix_d1.R` reproduces the appendix's comparison but not its
 standard deviations: both shrunk estimators come out well below the published

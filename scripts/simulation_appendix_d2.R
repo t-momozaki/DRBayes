@@ -20,10 +20,11 @@
 #   Proposed             1.565  1.092  1.909   88.8  5.879
 #   Proposed (pruning)   0.327  1.333  1.372   91.3  4.640
 #
-# The pruning row is run and printed but does not reproduce the published one:
-# at the reduced settings below pruning discards little or nothing, so it comes
-# out on top of the unpruned row instead of separating from it. The output says
-# so where it prints the table.
+# The pruning row is run, by the rule of the authors' own simulation code, and
+# printed, but does not reproduce the published one: at the reduced settings
+# below the rule acts in most fits yet moves the estimate by less than its
+# Monte Carlo error, so it comes out on top of the unpruned row instead of
+# separating from it. The output says so where it prints the table.
 #
 # References
 #   Kang, J. D. Y., & Schafer, J. L. (2007). Demystifying double robustness.
@@ -256,10 +257,10 @@ writeLines(c(
   "The Proposed (pruning) row does not reproduce the last row of Table 3, and",
   "the ABias column is not an exception to that: the published pair separates",
   "by 1.238 in ABias where the two rows above are nearly on top of each other.",
-  "Pruning discards particles whose weight against the untilted posterior",
-  "falls below prune.w / S, and at these settings that is little or nothing.",
-  "Section 5.3.1 gives no threshold, so what counts as small is",
-  "drbayes_control()'s reading rather than the paper's; ?drbayes_control says",
-  "so under the pruning threshold. Choosing prune.w or prune.q to make the",
-  "published number appear would be fitting the setting to the answer, so",
-  "they are left at their defaults and the row is reported as not reproduced."))
+  "Section 5.3.1 gives no threshold. Pruning here follows the rule of the",
+  "authors' own simulation code for Table 1, the default of drbayes_control(),",
+  "and at these settings it acts in most fits but moves the estimate by less",
+  "than its Monte Carlo error, as the paired difference above shows. Tuning",
+  "prune.abs until the published number appeared would be fitting the setting",
+  "to the answer, so it is left at the authors' value and the row is reported",
+  "as not reproduced."))

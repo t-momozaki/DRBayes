@@ -28,13 +28,20 @@
 #'   built.
 #' @param lambda_max Numeric. Largest value of the tilting parameter the sweep
 #'   will consider, written \eqn{\bar{\lambda}}{lambda-bar} in the paper.
-#'   Default 10.
+#'   Default 10. The value the constraint needs is measured in the reciprocal
+#'   of the outcome's units and, when the outcome model is misspecified, grows
+#'   with the sample size, so no default suits every data set. When the sweep
+#'   reaches \code{lambda_max} without meeting the constraint,
+#'   \code{drbayes_pc()} warns; raise \code{lambda_max} then, with
+#'   \code{n_steps} in proportion.
 #' @param n_steps Integer. Number of steps the sweep takes to travel from zero to
 #'   \code{lambda_max}, written \eqn{T} in the paper. The increment between
 #'   successive values of the tilting parameter is \code{lambda_max / n_steps}.
-#'   Default 1000, giving the increment of 0.01 used in the paper. This is the
-#'   resolution of the grid of Algorithm 2 only; the iteration cap of
-#'   Algorithm 1 is \code{newton_steps}.
+#'   Default 1000, giving an increment of 0.01. The paper states neither value;
+#'   the authors' simulation code for Table 1 used \code{lambda_max = 5} with an
+#'   increment of 0.05, and the defaults here are those of the package's first
+#'   implementation. This is the resolution of the grid of Algorithm 2 only;
+#'   the iteration cap of Algorithm 1 is \code{newton_steps}.
 #' @param newton_steps Integer. Largest number of Newton iterations Algorithm 1
 #'   may take when solving equation (3.9) for the tilting parameter, which is
 #'   the work \code{drbayes_pc(method = "is")} does in place of the sweep.
@@ -99,11 +106,17 @@
 #'   part of the particle cloud at every step, and it also ends the sweep much
 #'   sooner: see the note on the pruning threshold below.
 #' @param prune.rule Character. How pruning decides which particles to discard.
-#'   \code{"weight"}, the default, discards every particle whose weight against
-#'   the untilted posterior falls below \code{prune.w}, which is the rule the
-#'   authors used. \code{"quantile"} instead discards a fixed fraction
-#'   \code{prune.q} at every step, whatever the weights look like.
-#' @param prune.w Numeric, positive. Weight below which a particle is discarded,
+#'   \code{"absolute"}, the default, is the rule of the authors' simulation code
+#'   for Table 1: from the second step on, it discards every particle whose
+#'   unnormalised weight \eqn{\exp(\lambda_{t-1} B_n)} at the previous tilting
+#'   parameter is below \code{prune.abs}, unless that would discard
+#'   \code{prune.max} or more of them, in which case it discards nothing.
+#'   \code{"weight"} discards every particle whose normalised weight against the
+#'   untilted posterior falls below \code{prune.w} / S. \code{"quantile"}
+#'   discards a fixed fraction \code{prune.q} at every step, whatever the
+#'   weights look like. The paper itself states none of these rules.
+#' @param prune.w Numeric, positive. Read only when
+#'   \code{prune.rule = "weight"}. Weight below which a particle is discarded,
 #'   as a multiple of \eqn{1/S}, the weight a particle would carry if all
 #'   \eqn{S} of them were equal. Default 0.3, so a particle is discarded once it
 #'   carries less than three tenths of an equal share. Below about 0.12 the
@@ -124,6 +137,15 @@
 #'   condition, so discarding a fixed fraction of them moves its posterior mean
 #'   much further than an increment of the tilting parameter does, which ends
 #'   the sweep after very few steps; the note below says how much further.
+#' @param prune.abs Numeric, positive. Threshold on the unnormalised weight
+#'   \eqn{\exp(\lambda_{t-1} B_n)} below which \code{prune.rule = "absolute"}
+#'   discards a particle. Default 1.5, the value in the authors' code. Being
+#'   absolute, it is not invariant to the units of the outcome: \eqn{B_n} is
+#'   measured in those units, and the tilting parameter in their reciprocal.
+#' @param prune.max Numeric in (0, 1]. When at least this fraction of the
+#'   particles falls below \code{prune.abs}, \code{prune.rule = "absolute"}
+#'   discards none of them at that step. Default 0.95, the value in the authors'
+#'   code.
 #' @param rhat_max Numeric. Largest acceptable rank-normalised split R-hat.
 #'   Default 1.01, the threshold recommended by Vehtari et al. (2021).
 #' @param ess_min Numeric. Smallest acceptable bulk and tail effective sample
@@ -147,9 +169,13 @@
 #' constants of Algorithm 2 of Orihara, Momozaki and Sugasawa (2025). The paper
 #' leaves the choice of \eqn{\bar{\lambda}}{lambda-bar}, \eqn{T} and the smoothing
 #' coefficient \eqn{a} to the user, so hard-coding them would hide exactly the
-#' knobs the methodology asks you to tune. The defaults reproduce the settings
-#' used in the paper and are a reasonable starting point, not a recommendation to
-#' leave them alone.
+#' knobs the methodology asks you to tune. The paper does not report the values
+#' it used. The authors' simulation code for Table 1 used
+#' \eqn{\bar{\lambda}}{lambda-bar} = 5 and \eqn{T} = 100; the defaults here,
+#' 10 and 1000, are those of the package's first implementation. They are a
+#' reasonable starting point, not a recommendation to leave them alone. The
+#' default number of retained draws, 8,000, is also smaller than the 20,000 of
+#' the paper's Table 1.
 #'
 #' \code{newton_steps} and \code{ess_frac} have no counterpart in the paper,
 #' which asks only that Algorithm 1 be iterated "until convergence" and does not
@@ -177,22 +203,26 @@
 #'
 #' Section 5.3.1 of the paper describes sample pruning as discarding the samples
 #' with small sampling weights, and stops there: it gives no threshold, and no
-#' rule for deriving one. \code{prune.q} is this package's reading of that
-#' sentence, discarding a fixed fraction of the particles at each step, and its
-#' default of 0.1 is a choice made here rather than a value reported in the
-#' paper.
+#' rule for deriving one. The default, \code{prune.rule = "absolute"} with
+#' \code{prune.abs = 1.5} and \code{prune.max = 0.95}, is the rule in the
+#' authors' simulation code for Table 1. \code{prune.rule = "weight"} and
+#' \code{prune.rule = "quantile"} are this package's own readings of the
+#' sentence, and their defaults, \code{prune.w = 0.3} and \code{prune.q = 0.1},
+#' are choices made here rather than values reported in the paper.
 #'
 #' Pruning ends the sweep far sooner than its name suggests, and it is worth
 #' being clear about why. The particles it discards are those at one tail of the
-#' moment condition, the tail the tilting is pushing away from, so deleting
-#' \code{prune.q} of the cloud moves the posterior mean of \eqn{B_n} by a
-#' noticeable fraction of that mean's distance from zero, while one increment of
-#' the tilting parameter moves it by far less: at the default settings one
-#' pruning step is worth some tens of ordinary steps. Step 4 of Algorithm 2
-#' evaluates the constraint on the particles it currently holds, which are the
-#' pruned ones, so the sweep typically stops after one or two steps at a tilting
-#' parameter close to zero. How many steps it takes is then set by
-#' \code{prune.q} and hardly at all by \code{n_steps}.
+#' moment condition, the tail the tilting is pushing away from, so deleting them
+#' moves the posterior mean of \eqn{B_n} by far more than one increment of the
+#' tilting parameter does. Step 4 of Algorithm 2 evaluates the constraint on
+#' the particles it currently holds, which are the pruned ones, so the sweep
+#' typically stops after a few steps at a tilting parameter close to zero. Under
+#' the default absolute rule a single pruned step can carry the mean of
+#' \eqn{B_n} past zero altogether, and the sweep then stops on the change of
+#' sign without meeting the constraint, whatever \code{n_steps} is. Under the
+#' quantile rule one pruning step at \code{prune.q = 0.1} is worth some tens of
+#' ordinary steps, and the number of steps is set by \code{prune.q} and hardly
+#' at all by \code{n_steps}.
 #'
 #' The direction of that is what Section 5.3.1 asks for, since pruning exists
 #' precisely so that \eqn{\lambda} need not grow large enough to violate
@@ -203,9 +233,10 @@
 #' intervals are narrower than those of the tilted posterior by an amount that
 #' reflects the deletion and not information gained. Fit both ways. A result
 #' that changes materially between \code{pruning = FALSE} and
-#' \code{pruning = TRUE}, or between \code{prune.q = 0.05} and
-#' \code{prune.q = 0.2}, is telling you that the tilting is being carried by a
-#' small part of the particle cloud, which is worth knowing.
+#' \code{pruning = TRUE}, or as the threshold of the rule in force changes
+#' (\code{prune.abs}, \code{prune.w} or \code{prune.q}, whichever
+#' \code{prune.rule} reads), is telling you that the tilting is being carried
+#' by a small part of the particle cloud, which is worth knowing.
 #'
 #' \strong{Keeping the particles:}
 #'
@@ -269,8 +300,9 @@ drbayes_control <- function(mc = 5000, bn = 1000, thin = 2, chains = 4L,
                             tol = NULL, ridge = 1e-5, ess_frac = 0.1,
                             moment = c("ipw", "subclass"), n_subclass = 5L,
                             pruning = FALSE,
-                            prune.rule = c("weight", "quantile"),
+                            prune.rule = c("absolute", "weight", "quantile"),
                             prune.w = 0.3, prune.q = 0.1,
+                            prune.abs = 1.5, prune.max = 0.95,
                             rhat_max = 1.01, ess_min = 400,
                             keep_draws = FALSE,
                             keep_particles = FALSE) {
@@ -373,6 +405,18 @@ drbayes_control <- function(mc = 5000, bn = 1000, thin = 2, chains = 4L,
          "discard every particle; use 0 to leave the sweep untouched. ",
          "Received ", describe_value(prune.q))
   }
+  if (!is.numeric(prune.abs) || length(prune.abs) != 1L ||
+      !is.finite(prune.abs) || prune.abs <= 0) {
+    stop("prune.abs must be a single positive number, the unnormalised weight ",
+         "exp(lambda B_n) below which the absolute rule discards a particle. ",
+         "Received ", describe_value(prune.abs))
+  }
+  if (!is.numeric(prune.max) || length(prune.max) != 1L ||
+      !is.finite(prune.max) || prune.max <= 0 || prune.max > 1) {
+    stop("prune.max must be a single number in (0, 1], the fraction of the ",
+         "particles at or above which the absolute rule discards none of them. ",
+         "Received ", describe_value(prune.max))
+  }
 
   if (!is.numeric(rhat_max) || length(rhat_max) != 1L || !is.finite(rhat_max) ||
       rhat_max <= 1) {
@@ -416,6 +460,8 @@ drbayes_control <- function(mc = 5000, bn = 1000, thin = 2, chains = 4L,
       prune.rule     = prune.rule,
       prune.w        = as.numeric(prune.w),
       prune.q        = as.numeric(prune.q),
+      prune.abs      = as.numeric(prune.abs),
+      prune.max      = as.numeric(prune.max),
       rhat_max       = as.numeric(rhat_max),
       ess_min        = as.numeric(ess_min),
       keep_draws = keep_draws,
@@ -460,6 +506,9 @@ print.drbayes_control <- function(x, ...) {
     "off"
   } else if (identical(x$prune.rule, "quantile")) {
     paste0("on (quantile, prune.q = ", num(x$prune.q), ")")
+  } else if (identical(x$prune.rule, "absolute")) {
+    paste0("on (absolute, prune.abs = ", num(x$prune.abs), ", prune.max = ",
+           num(x$prune.max), ")")
   } else {
     paste0("on (weight, prune.w = ", num(x$prune.w), "/S)")
   }

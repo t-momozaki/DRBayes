@@ -820,3 +820,17 @@ test_that("the outcome link and the propensity score link are separate", {
   expect_true(has_formal(bayes_lm_hs, "unshrunk"))
   expect_false(has_formal(bayes_lm, "unshrunk"))
 })
+
+test_that("the literal reading of Step 2 prunes by the default rule", {
+  # The selected-block sweep has a pruning call of its own, so the default
+  # rule, which needs the tilting parameter of the previous step, has to reach
+  # it too rather than only the sweep that drbayes_pc() runs.
+  skip_on_cran()
+  d <- weak_confounder_data(6, n = 200, n_weak = 3, n_noise = 5)
+  f <- covariate_formulas(d)
+  fit <- fit_quietly(f$outcome, f$ps, d, threshold = 0.05, seed = 6,
+                     mc = 600, bn = 200, thin = 2, chains = 2L,
+                     control = drbayes_control(n_steps = 50, pruning = TRUE),
+                     diagnostics = "none", rejuvenate = "selected")
+  expect_true(all(is.finite(fit$pc)))
+})

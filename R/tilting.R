@@ -672,9 +672,11 @@ tilting_report <- function(out, S, control, tol, max_steps,
                      "better, or supply outcome draws that fit the data more ",
                      "closely.")
             } else {
-              paste0("Prefer method = \"smc\", with ",
-                     "drbayes_control(pruning = TRUE) if the constraint is ",
-                     "still not met.")
+              paste0("Prefer method = \"smc\". If the constraint is still ",
+                     "not met, drbayes_control(pruning = TRUE) is the remedy ",
+                     "of Section 5.3.1, but a pruned step can carry the mean ",
+                     "of B_n well past zero, so compare the result with ",
+                     "pruning = FALSE.")
             })
   }
 
@@ -684,13 +686,38 @@ tilting_report <- function(out, S, control, tol, max_steps,
     warning(degeneracy$message)
   }
   if (abs(B_mean) >= tol) {
+    # Algorithm 2 says why its sweep stopped. Short of the constraint it is one
+    # of two reasons, each with its own remedy: the sweep ran out of grid, or
+    # the mean of B_n changed sign between two steps.
+    stopped <- out$stopped %||% NA_character_
+    advice <- if (identical(stopped, "grid")) {
+      paste0("The sweep reached lambda_max = ",
+             format(control$lambda_max, digits = 3), " before the constraint ",
+             "was met. The tilting parameter the constraint needs is measured ",
+             "in the reciprocal of the outcome's units, and it grows with the ",
+             "sample size when the outcome model is misspecified, so no fixed ",
+             "lambda_max suits every data set: raise lambda_max, with ",
+             "n_steps in proportion so that the increment lambda_max / ",
+             "n_steps stays small.")
+    } else if (identical(stopped, "sign") && isTRUE(control$pruning)) {
+      paste0("The sweep stopped because the posterior mean of B_n changed ",
+             "sign between two steps. With pruning on, one pruned step can ",
+             "carry the mean well past zero however small the steps are, so ",
+             "compare the result with pruning = FALSE before relying on it, ",
+             "and check prune.abs against the scale of B_n.")
+    } else if (identical(stopped, "sign")) {
+      paste0("The sweep stopped because the posterior mean of B_n changed ",
+             "sign between two steps, so a step in the tilting parameter ",
+             "overshot the root: increase n_steps to take smaller steps.")
+    } else {
+      "Consider a wider lambda range or a better specified propensity score model."
+    }
     warning("Posterior coupling did not satisfy the moment condition: ",
             "|mean B_n| = ", format(abs(B_mean), digits = 3), " after ",
             out$n_steps, " steps up to lambda = ",
             format(out$lambda, digits = 3),
-            ". The returned 'pc' draws are not doubly robust. Inspect ",
-            "$smc, and consider a wider lambda range or a better specified ",
-            "propensity score model.")
+            ". The returned 'pc' draws are not doubly robust. ", advice,
+            " Inspect $smc.")
   }
 
   list(lambda    = out$lambda,
@@ -702,7 +729,8 @@ tilting_report <- function(out, S, control, tol, max_steps,
        converged = abs(B_mean) < tol && !degeneracy$degenerate,
        ess       = ess,
        n_ancestors_min = n_ancestors_min,
-       n_distinct      = n_distinct)
+       n_distinct      = n_distinct,
+       stopped         = out$stopped %||% NA_character_)
 }
 
 
@@ -935,8 +963,10 @@ tilt_is_index <- function(BB, control, tol) {
          "to where the constraint holds, and Section 3.3 gives exactly this ",
          "as its drawback and as the reason Algorithm 2 exists. Use ",
          "method = \"smc\", which moves the particles along a sequence of ",
-         "tilting parameters, with drbayes_control(pruning = TRUE) if the ",
-         "constraint is still not met.")
+         "tilting parameters. If the constraint is still not met, ",
+         "drbayes_control(pruning = TRUE) is the remedy of Section 5.3.1, but ",
+         "a pruned step can carry the mean of B_n well past zero, so compare ",
+         "the result with pruning = FALSE.")
   }
 
   lambda  <- 0
@@ -1108,6 +1138,7 @@ tilt_smc <- function(betas.ps, betas.otc, BB, d, control, tol, direction,
   lambda    <- 0
   n.steps   <- 0L
   n.eff.min <- S
+  stopped   <- "grid"
 
   for (ll in seq_along(lam.diff)) {
     # Incremental importance weights exp{(lambda_t - lambda_{t-1}) B_n}
@@ -1118,10 +1149,7 @@ tilt_smc <- function(betas.ps, betas.otc, BB, d, control, tol, direction,
     # far. That is not the incremental weight: an increment of lambda_max /
     # n_steps leaves every incremental weight within a fraction of a percent of
     # 1 / S, so an absolute threshold on those would discard nothing.
-    if (isTRUE(control$pruning)) {
-      cumulative <- normalised_weights(lam.s[ll + 1L] * BB)
-      ww <- prune_weights(ww, cumulative, control)
-    }
+    ww <- prune_step(ww, BB, lam.s, ll, control)
 
     resample_idx <- sample.int(S, size = S, replace = TRUE, prob = ww)
     n.eff.min    <- min(n.eff.min, length(unique(resample_idx)))
@@ -1141,12 +1169,41 @@ tilt_smc <- function(betas.ps, betas.otc, BB, d, control, tol, direction,
     # Algorithm 2 step 4 stops once the constraint is met. A sign change also
     # stops the sweep, because it brackets the root and going further would
     # walk away from it, but on its own it does not mean the constraint holds.
-    if (abs(BB_mean_new) < tol || BB_mean_new * BB_mean < 0) break
+    if (abs(BB_mean_new) < tol) {
+      stopped <- "tolerance"
+      break
+    }
+    if (BB_mean_new * BB_mean < 0) {
+      stopped <- "sign"
+      break
+    }
   }
 
   list(betas.ps = betas.ps, betas.otc = betas.otc,
        lambda = lambda, n_steps = n.steps, BB = BB,
-       n_ancestors_min = n.eff.min)
+       n_ancestors_min = n.eff.min, stopped = stopped)
+}
+
+
+#' The pruning step of Algorithm 2
+#'
+#' Shared by [tilt_smc()] and the selected-block sweep of [drbayes_select()],
+#' so that the two sweeps prune by the same rule with the same inputs.
+#'
+#' @param ww Normalised incremental weights at step `ll`.
+#' @param BB The moment condition at the current particles.
+#' @param lam.s The grid of tilting parameters, starting at zero.
+#' @param ll The step, counting from 1.
+#' @param control A [drbayes_control()] list.
+#'
+#' @return `ww`, pruned when `control$pruning` is TRUE.
+#'
+#' @keywords internal
+#' @noRd
+prune_step <- function(ww, BB, lam.s, ll, control) {
+  if (!isTRUE(control$pruning)) return(ww)
+  prune_weights(ww, normalised_weights(lam.s[ll + 1L] * BB), control,
+                log_previous = lam.s[ll] * BB, step = ll)
 }
 
 
@@ -1155,26 +1212,42 @@ tilt_smc <- function(betas.ps, betas.otc, BB, d, control, tol, direction,
 #' Section 5.3.1 discards the samples carrying small sampling weights, so that
 #' the particles that survive sit closer to \eqn{B_n = 0} and the tilting
 #' parameter does not have to grow large to hold the constraint. The paper does
-#' not say how small a weight has to be to be discarded. Zeroing the lowest
-#' The paper does not state the discard threshold, so both rules below are this
-#' package's reading of section 5.3.1 rather than values taken from the paper.
+#' not state the discard threshold, so both rules below are this package's
+#' reading of section 5.3.1 rather than values taken from the paper.
 #'
 #' @param ww Normalised incremental weights, one per particle. These are what
 #'   the resampling draws on, and what is returned.
 #' @param cumulative Normalised weights at the tilting parameter reached so far,
 #'   which is the quantity section 5.3.1 thresholds. They decide WHICH particles
 #'   go; `ww` decides what the sweep then does with the survivors.
-#' @param control A [drbayes_control()] list, supplying `prune.rule` and either
-#'   `prune.w` or `prune.q`.
+#' @param control A [drbayes_control()] list, supplying `prune.rule` and the
+#'   thresholds that rule reads.
+#' @param log_previous `lambda_{t-1} B_n` at each particle, the log of the
+#'   unnormalised weight the absolute rule thresholds. Only that rule reads it.
+#' @param step The step of the sweep, counting from 1. The absolute rule does
+#'   not act at step 1, where `lambda_{t-1}` is zero.
 #'
 #' @return `ww` with the discarded entries set to zero and the rest
 #'   renormalised, or `ww` untouched when nothing meets the threshold.
 #'
 #' @keywords internal
 #' @noRd
-prune_weights <- function(ww, cumulative, control) {
+prune_weights <- function(ww, cumulative, control, log_previous = NULL,
+                          step = NULL) {
   S <- length(ww)
-  if (identical(control$prune.rule, "quantile")) {
+  if (identical(control$prune.rule, "absolute")) {
+    # The rule of the authors' simulation code for Table 1: from the second
+    # step, discard the particles whose exp(lambda_{t-1} B_n) is below
+    # prune.abs, unless that is prune.max of the cloud or more. Compared on the
+    # log scale, so that a large lambda B_n cannot overflow to Inf.
+    if (is.null(log_previous) || is.null(step)) {
+      stop("The absolute pruning rule needs log_previous and step.")
+    }
+    if (step < 2L) return(ww)
+    drop <- which(log_previous < log(control$prune.abs))
+    if (length(drop) >= control$prune.max * S) return(ww)
+    setting <- paste0("prune.abs, which is ", format(control$prune.abs))
+  } else if (identical(control$prune.rule, "quantile")) {
     n_drop <- floor(control$prune.q * S)
     if (n_drop < 1) return(ww)
     drop <- order(cumulative)[seq_len(n_drop)]

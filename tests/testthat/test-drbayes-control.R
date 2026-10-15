@@ -89,6 +89,7 @@ test_that("the print method shows the pruning rule actually in force", {
   # quantile rule's setting while the weight rule is the one running tells
   # them the sweep is doing something it is not.
   weight <- capture.output(print(drbayes_control(pruning = TRUE,
+                                                 prune.rule = "weight",
                                                  prune.w = 0.25)))
   expect_true(any(grepl("pruning = on (weight, prune.w = 0.25/S)", weight,
                         fixed = TRUE)))
@@ -475,7 +476,9 @@ test_that("pruning thresholds that cannot act are inert, not refused", {
   # The weight rule thresholds at prune.w / S, so with even weights nothing
   # falls below it until prune.w passes 1, and then everything does.
   even <- rep(1 / 20, 20)
-  weight_at <- function(w) drbayes_control(pruning = TRUE, prune.w = w)
+  weight_at <- function(w) {
+    drbayes_control(pruning = TRUE, prune.rule = "weight", prune.w = w)
+  }
   expect_identical(prune_weights(even, even, weight_at(1)), even)
   expect_error(prune_weights(even, even, weight_at(1 + 1e-8)),
                "Sample pruning left 0 particle(s)", fixed = TRUE)
@@ -521,7 +524,8 @@ test_that("pruning, prune.rule, prune.w and prune.q are validated", {
                  "pruning must be TRUE or FALSE", fixed = TRUE)
   }
 
-  expect_identical(drbayes_control()$prune.rule, "weight")
+  expect_identical(drbayes_control()$prune.rule, "absolute")
+  expect_identical(drbayes_control(prune.rule = "w")$prune.rule, "weight")
   # match.arg() abbreviates, so a shortened rule has to resolve rather than
   # silently fall back on the default.
   expect_identical(drbayes_control(prune.rule = "q")$prune.rule, "quantile")
@@ -660,4 +664,24 @@ test_that("a count past the integer bound is refused rather than made NA", {
                  arg, fixed = TRUE, info = arg)
   }
   expect_identical(drbayes_control(n_subclass = 6L)$n_subclass, 6L)
+})
+
+test_that("prune.abs and prune.max are validated", {
+  expect_identical(drbayes_control()$prune.abs, 1.5)
+  expect_identical(drbayes_control()$prune.max, 0.95)
+  for (bad in list(0, -1, NA, Inf, "a", c(1, 2))) {
+    expect_error(drbayes_control(prune.abs = bad),
+                 "prune.abs must be a single positive number", fixed = TRUE)
+  }
+  for (bad in list(0, 1.5, -0.1, NA, "a", c(0.5, 0.9))) {
+    expect_error(drbayes_control(prune.max = bad),
+                 "prune.max must be a single number in (0, 1]", fixed = TRUE)
+  }
+  expect_true(accepts(prune.max = 1))
+})
+
+test_that("the print method shows the absolute pruning rule", {
+  shown <- capture.output(print(drbayes_control(pruning = TRUE)))
+  expect_true(any(grepl("pruning = on (absolute, prune.abs = 1.5, prune.max = 0.95)",
+                        shown, fixed = TRUE)))
 })

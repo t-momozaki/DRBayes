@@ -175,7 +175,12 @@ This is the doubly robust estimand and the quantity to report.}
 the tolerance \code{tol} it was compared against, the number of steps taken
 \code{n_steps} out of \code{max_steps}, and \code{converged}. When
 \code{converged} is FALSE the moment condition was never satisfied and the
-\code{pc} draws carry no double robustness guarantee.}
+\code{pc} draws carry no double robustness guarantee. For
+\code{method = "smc"}, \code{stopped} says why the sweep ended:
+\code{"tolerance"} when the constraint was met, \code{"sign"} when the
+posterior mean of the moment condition changed sign between two steps,
+and \code{"grid"} when it reached \code{lambda_max}; it is \code{NA}
+when the sweep was skipped or Algorithm 1 ran.}
 \item{diagnostics}{Data frame of convergence diagnostics, one row per parameter of each
 model: rank-normalised split R-hat, bulk and tail effective sample size, and the Monte
 Carlo standard error of the mean. NULL when \code{diagnostics = "none"}.}

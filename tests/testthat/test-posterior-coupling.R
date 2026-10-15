@@ -53,7 +53,7 @@ test_that("the sweep reports whether it met the moment condition", {
 
   expect_named(fit$smc, c("lambda", "B_mean", "B_mean_weighted", "tol",
                           "n_steps", "max_steps", "converged", "ess",
-                          "n_ancestors_min", "n_distinct"))
+                          "n_ancestors_min", "n_distinct", "stopped"))
   expect_true(fit$smc$converged)
   # B_mean is recomputed from the draws that are returned, so the number
   # reported is the one describing the output rather than the weights that
@@ -199,4 +199,33 @@ test_that("internal and external sampling retain the same draws", {
   # The two branches must keep the same iteration indices, otherwise feeding a
   # sampler's own draws back in cannot reproduce the internal result.
   expect_length(external$g.comp, length(internal$g.comp))
+})
+
+test_that("coupling moves a misspecified outcome model towards the truth", {
+  # Theorem 1: with the propensity score model correct, the coupled posterior
+  # is consistent even though the outcome model is not. The outcome model here
+  # omits X2, a confounder, so the g-computation is biased by roughly
+  # 0.7 times the imbalance of X2 between the arms; the coupled posterior should
+  # recover most of that. The true ATE is 2.
+  #
+  # n = 200 is the size at which the default grid reaches the constraint. The
+  # tilting parameter the constraint needs grows roughly in proportion to n
+  # when the outcome model is wrong, so on this design the sweep runs out of
+  # grid at lambda_max = 10 by n = 500 and, at n = 2000, ends with the bias
+  # untouched and a warning that the draws are not doubly robust.
+  skip_on_cran()
+  set.seed(61)
+  n <- 200
+  dat <- data.frame(X1 = stats::rnorm(n), X2 = stats::rnorm(n))
+  dat$A <- stats::rbinom(n, 1, stats::plogis(0.3 + 0.8 * dat$X1 - 0.5 * dat$X2))
+  dat$Y <- 1 + 2 * dat$A + 0.9 * dat$X1 + 0.7 * dat$X2 + stats::rnorm(n)
+
+  fit <- drbayes_pc(Y ~ A + X1, A ~ X1 + X2, data = dat,
+                    mc = 3000, bn = 1000, thin = 2, chains = 2L,
+                    seed = 62, verbose = FALSE, diagnostics = "none")
+
+  bias_g  <- abs(mean(fit$g.comp) - 2)
+  bias_pc <- abs(mean(fit$pc) - 2)
+  expect_gt(bias_g, 0.15)          # the design has teeth
+  expect_lt(bias_pc, bias_g / 2)   # coupling removes at least half of it
 })
