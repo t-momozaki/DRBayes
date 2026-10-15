@@ -81,7 +81,8 @@ a handful of steps whenever one exists, so the cap is there to end a
 search that is not converging rather than to be reached.}
 
 \item{smoothing}{Numeric. Kernel smoothing coefficient of Liu and West (2001),
-written \eqn{a} in the paper. A number in (0, 1]. Default 0.99.}
+written \eqn{a} in the paper. A number in (0, 1]. Default 0.99, the
+example value of Algorithm 2 and the value in the authors' simulation code.}
 
 \item{tol}{Numeric. Tolerance on the absolute posterior mean of the moment
 condition, which is the stopping rule for the sweep. NULL, the default, sets

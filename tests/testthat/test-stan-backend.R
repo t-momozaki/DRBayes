@@ -1,7 +1,9 @@
 # The Stan backend has to fit the same model as the Gibbs sampler it mirrors,
-# so every comparison below asks whether the two posterior means differ by more
-# than Monte Carlo error can explain. The criterion is the one used elsewhere in
-# this package: |mean_a - mean_b| / sqrt(mcse_a^2 + mcse_b^2) < 3.
+# so every comparison below asks whether the two posterior means, and the two
+# posterior standard deviations, differ by more than Monte Carlo error can
+# explain. The criterion is the one used elsewhere in this package:
+# |mean_a - mean_b| / sqrt(mcse_a^2 + mcse_b^2) < 3, and the same with sd and
+# mcse_sd.
 #
 # These tests need CmdStan, which the CRAN machines do not have, so they are
 # skipped twice over.

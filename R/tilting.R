@@ -1212,8 +1212,9 @@ prune_step <- function(ww, BB, lam.s, ll, control) {
 #' Section 5.3.1 discards the samples carrying small sampling weights, so that
 #' the particles that survive sit closer to \eqn{B_n = 0} and the tilting
 #' parameter does not have to grow large to hold the constraint. The paper does
-#' not state the discard threshold, so both rules below are this package's
-#' reading of section 5.3.1 rather than values taken from the paper.
+#' not state the discard threshold. The absolute rule is the one in the
+#' authors' simulation code for Table 1; the weight and quantile rules are this
+#' package's own readings of section 5.3.1.
 #'
 #' @param ww Normalised incremental weights, one per particle. These are what
 #'   the resampling draws on, and what is returned.
@@ -1228,7 +1229,9 @@ prune_step <- function(ww, BB, lam.s, ll, control) {
 #'   not act at step 1, where `lambda_{t-1}` is zero.
 #'
 #' @return `ww` with the discarded entries set to zero and the rest
-#'   renormalised, or `ww` untouched when nothing meets the threshold.
+#'   renormalised, or `ww` untouched when nothing meets the threshold, and,
+#'   under the absolute rule, also at step 1 and whenever `prune.max` or more
+#'   of the particles would be discarded.
 #'
 #' @keywords internal
 #' @noRd

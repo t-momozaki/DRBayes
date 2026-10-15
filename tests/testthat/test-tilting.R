@@ -426,8 +426,8 @@ test_that("pruning meets the constraint by deleting rather than by tilting", {
   # Discarding a tenth of the cloud moves the posterior mean of B_n further
   # than an increment of the tilting parameter does, so the sweep ends almost
   # at once and at a much smaller lambda. This is the behaviour ?drbayes_control
-  # describes under the pruning threshold, and it is pinned here because it is
-  # surprising rather than because it is wrong.
+  # describes for the quantile rule under the pruning threshold, and it is
+  # pinned here because it is surprising rather than because it is wrong.
   expect_true(plain$smc$converged)
   expect_true(pruned$smc$converged)
   expect_lt(pruned$smc$n_steps, plain$smc$n_steps)
@@ -610,7 +610,7 @@ test_that("Algorithm 1 solves equation (3.9) at the root uniroot finds", {
   expect_lt(abs(out$B_mean_weighted), 1e-10)
 })
 
-test_that("step 1 of Algorithm 2 weights by exp{(lambda_t - lambda_{t-1}) B_n}", {
+test_that("normalised_weights() forms the step 1 weights without overflowing", {
   BB <- c(-2, -0.5, 0, 1, 3)
   increment <- 0.37
   expect_equal(normalised_weights(increment * BB),

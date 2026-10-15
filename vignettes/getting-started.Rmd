@@ -893,8 +893,10 @@ interval, and which estimand it is an interval for.
 
 ### When the sweep does not converge
 
-`converged = FALSE` means the sweep ran out of tilting parameter without
-driving the moment condition below the tolerance. The `pc` draws it returns are
+`converged = FALSE` means the sweep ended without driving the moment condition
+below the tolerance, and `fit$smc$stopped` says how: `"grid"` when it ran out
+of tilting parameter, `"sign"` when the posterior mean of the moment condition
+changed sign between two steps. The `pc` draws it returns are
 still draws from *a* tilted posterior, but not one that satisfies the
 constraint, so Theorem 1 does not apply to them and they should not be reported
 as doubly robust.
@@ -904,9 +906,17 @@ by `lambda_max`, and how many posterior draws that grid is evaluated on does
 not change where the moment condition can be met. What to try instead, roughly
 in order of how often it is the answer:
 
-- **Widen the search.** `drbayes_control(lambda_max = 20)` doubles the range.
-  A large fitted `lambda` at the boundary is the signature of a tilt that wants
-  to go further than it was allowed.
+- **Widen the search,** when `stopped` is `"grid"`.
+  `drbayes_control(lambda_max = 20, n_steps = 2000)` doubles the range and
+  keeps the increment. A large fitted `lambda` at the boundary is the signature
+  of a tilt that wants to go further than it was allowed. The tilting parameter
+  the constraint needs is measured in the reciprocal of the outcome's units,
+  and it grows with the sample size when the outcome model is misspecified, so
+  no default range suits every data set.
+- **Take smaller steps,** when `stopped` is `"sign"`: a step overshot the
+  root, and a larger `n_steps` shortens the steps. With `pruning = TRUE`, a
+  single pruned step can carry the mean past zero however small the steps are,
+  so compare the result with `pruning = FALSE` instead.
 - **Look at the propensity score.** A moment condition that cannot be satisfied
   usually means the weights are being dominated by a handful of observations.
   `range(fitted(glm(ps.formula, binomial, data)))` close to 0 or 1 says so

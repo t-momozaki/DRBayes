@@ -162,8 +162,10 @@ test_that("the tilting settings on the control object are honoured", {
   plain <- fit_with(drbayes_control(n_steps = 50))
   # Sample pruning and the subclassification moment condition are settings of
   # the sweep, so they have to reach it here as they do through drbayes_pc().
-  # prune.q is read by the quantile rule; the default weight rule reads
-  # prune.w instead and discards nothing at these tilting parameters.
+  # The quantile rule is named because it discards a known share of the
+  # particles, which the checks below count on; the default absolute rule
+  # reads prune.abs instead. The default rule is tested at the end of this
+  # file.
   pruning <- drbayes_control(n_steps = 50, pruning = TRUE,
                              prune.rule = "quantile", prune.q = 0.5)
   pruned <- fit_with(pruning)
