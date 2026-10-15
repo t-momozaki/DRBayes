@@ -30,6 +30,18 @@ mcse_z <- function(a, b) {
   }, numeric(1))
 }
 
+# The same criterion applied to the posterior standard deviation, so that a
+# sampler with the right centre but the wrong spread does not pass.
+mcse_z_sd <- function(a, b) {
+  parameters <- dimnames(a)[[3]]
+  vapply(parameters, function(p) {
+    draws_a <- a[, , p, drop = FALSE]
+    draws_b <- b[, , p, drop = FALSE]
+    abs(stats::sd(draws_a) - stats::sd(draws_b)) /
+      sqrt(posterior::mcse_sd(draws_a)^2 + posterior::mcse_sd(draws_b)^2)
+  }, numeric(1))
+}
+
 continuous_data <- function(n = 300, seed = 11) {
   set.seed(seed)
   A  <- rbinom(n, 1, plogis(0.4 * rnorm(n)))
@@ -93,6 +105,7 @@ test_that("bayes_stan and bayes_lm agree within Monte Carlo error", {
   stan  <- bayes_stan("lm", d$Y, d$X, mc = 2000, warmup = 1000, chains = 4)
 
   expect_true(all(mcse_z(gibbs, stan) < 3))
+  expect_true(all(mcse_z_sd(gibbs, stan) < 3))
 })
 
 
@@ -106,6 +119,7 @@ test_that("bayes_stan and bayes_logit agree within Monte Carlo error", {
   stan  <- bayes_stan("logit", d$Yl, d$X, mc = 2000, warmup = 1000, chains = 4)
 
   expect_true(all(mcse_z(gibbs, stan) < 3))
+  expect_true(all(mcse_z_sd(gibbs, stan) < 3))
 })
 
 
@@ -120,6 +134,7 @@ test_that("bayes_stan and bayes_probit agree within Monte Carlo error", {
                       chains = 4)
 
   expect_true(all(mcse_z(gibbs, stan) < 3))
+  expect_true(all(mcse_z_sd(gibbs, stan) < 3))
 })
 
 
@@ -138,6 +153,7 @@ test_that("bayes_stan and bayes_lm_hs agree within Monte Carlo error", {
                unshrunk = 1L))
 
   expect_true(all(mcse_z(gibbs, stan) < 3))
+  expect_true(all(mcse_z_sd(gibbs, stan) < 3))
 })
 
 
@@ -154,6 +170,7 @@ test_that("bayes_stan and bayes_logit_hs agree within Monte Carlo error", {
                unshrunk = 1L))
 
   expect_true(all(mcse_z(gibbs, stan) < 3))
+  expect_true(all(mcse_z_sd(gibbs, stan) < 3))
 })
 
 
@@ -170,6 +187,7 @@ test_that("bayes_stan and bayes_probit_hs agree within Monte Carlo error", {
                unshrunk = 1L))
 
   expect_true(all(mcse_z(gibbs, stan) < 3))
+  expect_true(all(mcse_z_sd(gibbs, stan) < 3))
 })
 
 

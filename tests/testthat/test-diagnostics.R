@@ -68,6 +68,28 @@ test_that("the statistics agree with the posterior package", {
   expect_equal(d$ess_bulk, posterior::ess_bulk(x), tolerance = 0.01)
 })
 
+test_that("the statistics agree with posterior on heavy tails, odd lengths and antithetic chains", {
+  skip_on_cran()
+  skip_if_not_installed("posterior")
+
+  # Heavy tails with autocorrelation: an AR(1) chain pushed through the Cauchy
+  # quantile function. Rank normalisation recovers the dependence of the latent
+  # chain, which plain autocorrelations of Cauchy values cannot; with
+  # independent Cauchy draws every version gives about N and nothing is tested.
+  # An odd number of iterations exercises the split of each chain into halves.
+  z <- ar1_chains(999, 4, rho = 0.5, seed = 52)
+  x <- stats::qcauchy(stats::pnorm(z, sd = 1 / sqrt(1 - 0.5^2)))
+  expect_equal(rhat(x), posterior::rhat(x), tolerance = 1e-8)
+  expect_equal(ess_bulk(x), posterior::ess_bulk(x), tolerance = 0.05)
+  expect_equal(ess_tail(x), posterior::ess_tail(x), tolerance = 0.05)
+
+  # Negative autocorrelation makes the effective sample size exceed the number
+  # of draws, which is where the cap of S log10 S and the pairing of lags bite.
+  y <- ar1_chains(1000, 4, rho = -0.3, seed = 53)
+  expect_equal(rhat(y), posterior::rhat(y), tolerance = 1e-8)
+  expect_equal(ess_bulk(y), posterior::ess_bulk(y), tolerance = 0.05)
+})
+
 test_that("convergence_diagnostics summarises every parameter", {
   skip_on_cran()
   x <- array(rnorm(500 * 4 * 3), c(500, 4, 3),

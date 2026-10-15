@@ -17,7 +17,10 @@ test_that("a seed given to generate_dataset does not disturb the caller", {
 })
 
 test_that("generate_dataset implements the data generating process of the paper", {
-  d <- generate_dataset(nn = 5000, pp = 0, seed = 1)
+  # 50000 rows put the standard error of the smallest coefficient, 0.1, near
+  # 0.01, so a coefficient off by a factor of two lies about ten standard
+  # errors out rather than three.
+  d <- generate_dataset(nn = 50000, pp = 0, seed = 1)
 
   expect_named(d, c("AA", "YY", "WW1", "WW2", "WW3", "WW4"))
   expect_true(all(d$AA %in% c(0, 1)))
@@ -26,12 +29,17 @@ test_that("generate_dataset implements the data generating process of the paper"
   expect_lt(abs(mean(d$AA) - 0.5), 0.03)
 
   # The coefficients the paper specifies, recovered from the generated data.
+  # Each is checked against its own standard error: a tolerance on the mean
+  # relative difference of the whole vector would let one coefficient be off by
+  # a factor of two while the others hold the average down.
   ps <- stats::glm(AA ~ WW1 + WW2 + WW3 + WW4, binomial, d)
-  expect_equal(unname(coef(ps)), c(0, 1, -0.5, 0.25, 0.1), tolerance = 0.15)
+  z_ps <- (coef(ps) - c(0, 1, -0.5, 0.25, 0.1)) / sqrt(diag(stats::vcov(ps)))
+  expect_true(all(abs(z_ps) < 4), info = paste(round(z_ps, 2), collapse = " "))
 
   outcome <- stats::lm(YY ~ AA + WW1 + WW2 + WW3 + WW4, d)
-  expect_equal(unname(coef(outcome)),
-               c(100, 110, 27.4, 13.7, 13.7, 13.7), tolerance = 0.15)
+  z_out <- (coef(outcome) - c(100, 110, 27.4, 13.7, 13.7, 13.7)) /
+    sqrt(diag(stats::vcov(outcome)))
+  expect_true(all(abs(z_out) < 4), info = paste(round(z_out, 2), collapse = " "))
 })
 
 test_that("the extra covariates are irrelevant, not confounders", {
