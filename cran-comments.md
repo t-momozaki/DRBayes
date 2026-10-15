@@ -45,21 +45,24 @@ subsequent R-devel run reports no examples NOTE.
 
 ## R CMD check results
 
-    Status: 2 NOTEs
-    0 errors | 0 warnings | 2 notes
+    Status: 3 NOTEs
+    0 errors | 0 warnings | 3 notes
 
 Run with `_R_CHECK_FORCE_SUGGESTS_=false` and `_R_CHECK_LIMIT_CORES_=TRUE` on
-macOS 26 (aarch64), R 4.5.1. Over two runs the examples took under 10s in
-total, 15 to 28s with `--run-donttest`, and the vignettes rebuilt in 54 to
-100s, so the whole check finishes well inside the CRAN budget. The PDF manual builds. Every example runs: there is no `\dontrun` in the package,
+macOS 26 (aarch64), R 4.5.1. Over three runs the examples took under 10s in
+total, 15 to 42s with `--run-donttest`, and the vignettes rebuilt in 54 to
+117s, so the whole check finishes well inside the CRAN budget. The PDF manual
+builds. Every example runs: there is no `\dontrun` in the package,
 and the three `\donttest` blocks are the one in `bayes_stan` that needs
 CmdStan, the one in `run_parallel_simulation` that spawns parallel workers,
 and the one in `drbayes_pc` that supplies draws from elsewhere, moved there
 for time as described above.
 
-The second of the two NOTEs is local: this machine's HTML Tidy is older than
-the one the HTML validation step wants, so that step is skipped rather than
-failing. It is not a property of the package.
+The second and third NOTEs are local. This machine could not reach the time
+service that the check of future file timestamps asks ("unable to verify
+current time"), and its HTML Tidy is older than the one the HTML validation
+step wants, so that step is skipped rather than failing. Neither is a property
+of the package.
 
 ## Notes we expect, and why
 
