@@ -20,6 +20,7 @@ script says so where it prints its results.
 | Script | Reproduces | Minutes |
 | --- | --- | --- |
 | `simulation_table1.R` | Sections 5.1 to 5.3, Table 1, Figure 1 | 1.8-1.9 |
+| `reproduce_table1.R` | Table 1, the package's rows, with the authors' settings | 20 at 200 replications on 12 cores |
 | `simulation_table2.R` | Section 5.4, Table 2, BART outcome model | hours; see below |
 | `simulation_appendix_d1.R` | Appendix D.1, high dimensions | 0.4 |
 | `simulation_appendix_d2.R` | Appendix D.2, Table 3 | 0.6 |
@@ -40,6 +41,34 @@ each script, so a replication is reproducible on its own and the studies
 return the same numbers however many workers run them. Running a script twice
 gives byte-identical tables.
 
+## Reproducing the published numbers
+
+The numbers in the paper come from the authors' own simulation code, whose
+settings the paper does not state: one chain of 20,000 draws, an outcome prior
+of N(0, 20^2) on the coefficients, a propensity score prior close to flat, the
+grid 0, 0.05, ..., 5 for Algorithm 2 with a stop only when the mean of B_n
+changes sign, and the pruning rule that `drbayes_control()` now uses by
+default. `reproduce_table1.R` gives the package those settings. At n = 500 and
+200 replications it reproduces every one of the package's rows of Table 1
+within Monte Carlo error, the pruning row included:
+
+| Block | Method | ABias | ESE | CP | AvL | published |
+| --- | --- | --- | --- | --- | --- | --- |
+| Correct / Correct | Proposed | 0.007 | 0.115 | 90.0 | 0.396 | 0.001, 0.110, 92.2, 0.396 |
+| Incorrect / Correct | Proposed | 0.006 | 0.113 | 91.0 | 0.394 | 0.000, 0.108, 92.8, 0.396 |
+| Correct / Incorrect | G-formula | 2.705 | 2.263 | 77.5 | 8.998 | 2.535, 2.286, 80.8, 8.969 |
+| Correct / Incorrect | Saarela | 0.006 | 0.993 | 93.5 | 3.757 | 0.008, 1.056, 92.2, 3.807 |
+| Correct / Incorrect | Proposed | 1.343 | 1.265 | 99.0 | 8.979 | 1.267, 1.271, 98.9, 8.960 |
+| Correct / Incorrect | Proposed (pruning) | 0.103 | 1.439 | 99.0 | 7.555 | 0.086, 1.428, 98.0, 7.539 |
+
+With 200 replications the Monte Carlo standard error of ABias in the
+Correct / Incorrect block is 0.09 to 0.16 (ESE over the square root of 200),
+and of CP up to about 2 points, so these differences are within it. The authors did not fix their seed, so exact agreement is not
+expected. The package's defaults differ from these settings on purpose: one
+chain cannot be checked for convergence and the outcome prior is not scaled to
+the data, so `simulation_table1.R` keeps the defaults and `reproduce_table1.R`
+holds the paper's settings.
+
 ## What is not reproduced
 
 `simulation_table2.R` runs, through the `outcome.mu`, `outcome.mu1` and
@@ -55,8 +84,10 @@ Unlike the other scripts it takes hours rather than minutes at the full
 settings; environment variables set the replications, sample sizes, tree
 counts and workers, so a short check runs the same code.
 
-The `Proposed (pruning)` rows of Table 1 and of Table 3 are not reproduced.
-Both scripts run `drbayes_control(pruning = TRUE)`, whose default is the
+With the package's defaults, the `Proposed (pruning)` rows of Table 1 and of
+Table 3 are not reproduced; with the authors' settings Table 1's is, as above.
+`simulation_table1.R` and `simulation_appendix_d2.R` run
+`drbayes_control(pruning = TRUE)`, whose default is the
 pruning rule of the authors' own simulation code, and print the row. At the
 reduced settings the rule acts in most fits but moves the estimate by less than
 its Monte Carlo error, so the row comes out on top of the unpruned one rather
