@@ -398,29 +398,3 @@ test_that("the family and link are resolved from the outcome or refused", {
   expect_error(resolve_family_link(binary, NULL, NULL, "cauchit", FALSE),
                "should be one of")
 })
-
-test_that("the old dotted names still work and warn", {
-  d <- heterogeneous_data(n = 300)
-
-  set.seed(5)
-  current <- suppressMessages(drbayes_bb(Y ~ A + X1, A ~ X1, d,
-                                         num_iterations = 50, verbose = FALSE))
-
-  # Every renamed export forwards to its replacement for one release. The
-  # nleqslv variant forwards here too: it computed the same estimator to about
-  # 1e-08, so there is nothing of its own left to keep.
-  for (old in list(DRBayes.BB, DRBayes.BB.nleqslv)) {
-    set.seed(5)
-    expect_warning(
-      forwarded <- suppressMessages(old(Y ~ A + X1, A ~ X1, d,
-                                        num_iterations = 50, verbose = FALSE)),
-      "deprecated"
-    )
-    expect_identical(forwarded, current)
-  }
-
-  expect_warning(
-    bayes_draws <- B.LM(rnorm(50), matrix(rnorm(50), 50, 1), mc = 20),
-    "deprecated")
-  expect_identical(dim(bayes_draws), c(20L, 4L, 2L))
-})

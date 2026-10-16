@@ -1,7 +1,7 @@
 Package: DRBayes
 Type: Package
 Title: Bayesian Doubly Robust Causal Inference Methods
-Version: 0.1.1
+Version: 0.1.2
 Authors@R: c(
     person("Shunichiro", "Orihara", role = "aut"),
     person("Tomotaka", "Momozaki", email = "momozaki.stat@gmail.com",

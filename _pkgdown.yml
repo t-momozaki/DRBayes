@@ -95,13 +95,6 @@ reference:
   contents:
   - DRBayes-package
 
-- title: Superseded names
-  desc: >
-    The names used before the release. Each forwards to its replacement and
-    warns once per session.
-  contents:
-  - DRBayes-deprecated
-
 articles:
 - title: Using the package
   navbar: ~

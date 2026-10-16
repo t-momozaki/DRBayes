@@ -1,3 +1,13 @@
+# DRBayes 0.1.2
+
+## Breaking changes
+
+* The dotted names superseded in 0.1.0 (`DRBayes.PC()`, `DRBayes.BB()`,
+  `DRBayes.BB.nleqslv()`, `B.LM()`, `B.Logit()`, `B.Probit()`, `HS.LM()`,
+  `HS.Logit()` and `HS.Probit()`) have been removed, as their warning
+  announced. The table under "Renamed functions" in the 0.1.1 notes below
+  gives the replacement for each.
+
 # DRBayes 0.1.1
 
 First public release, of the reference implementation of Orihara, Momozaki and
