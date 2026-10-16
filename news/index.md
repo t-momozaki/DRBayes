@@ -1,5 +1,15 @@
 # Changelog
 
+## DRBayes 0.1.2
+
+### Breaking changes
+
+- The dotted names superseded in 0.1.0 (`DRBayes.PC()`, `DRBayes.BB()`,
+  `DRBayes.BB.nleqslv()`, `B.LM()`, `B.Logit()`, `B.Probit()`,
+  `HS.LM()`, `HS.Logit()` and `HS.Probit()`) have been removed, as their
+  warning announced. The table under “Renamed functions” in the 0.1.1
+  notes below gives the replacement for each.
+
 ## DRBayes 0.1.1
 
 First public release, of the reference implementation of Orihara,
@@ -82,21 +92,19 @@ removed in the next release.
 
 | Old | New |
 |----|----|
-| [`DRBayes.PC()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md) | [`drbayes_pc()`](https://t-momozaki.github.io/DRBayes/reference/drbayes_pc.md) |
-| [`DRBayes.BB()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md), [`DRBayes.BB.nleqslv()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md) | [`drbayes_bb()`](https://t-momozaki.github.io/DRBayes/reference/drbayes_bb.md) |
-| [`B.LM()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md) | [`bayes_lm()`](https://t-momozaki.github.io/DRBayes/reference/bayes_lm.md) |
-| [`B.Logit()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md) | [`bayes_logit()`](https://t-momozaki.github.io/DRBayes/reference/bayes_logit.md) |
-| [`B.Probit()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md) | [`bayes_probit()`](https://t-momozaki.github.io/DRBayes/reference/bayes_probit.md) |
-| [`HS.LM()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md) | [`bayes_lm_hs()`](https://t-momozaki.github.io/DRBayes/reference/bayes_lm_hs.md) |
-| [`HS.Logit()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md) | [`bayes_logit_hs()`](https://t-momozaki.github.io/DRBayes/reference/bayes_logit_hs.md) |
-| [`HS.Probit()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md) | [`bayes_probit_hs()`](https://t-momozaki.github.io/DRBayes/reference/bayes_probit_hs.md) |
+| `DRBayes.PC()` | [`drbayes_pc()`](https://t-momozaki.github.io/DRBayes/reference/drbayes_pc.md) |
+| `DRBayes.BB()`, `DRBayes.BB.nleqslv()` | [`drbayes_bb()`](https://t-momozaki.github.io/DRBayes/reference/drbayes_bb.md) |
+| `B.LM()` | [`bayes_lm()`](https://t-momozaki.github.io/DRBayes/reference/bayes_lm.md) |
+| `B.Logit()` | [`bayes_logit()`](https://t-momozaki.github.io/DRBayes/reference/bayes_logit.md) |
+| `B.Probit()` | [`bayes_probit()`](https://t-momozaki.github.io/DRBayes/reference/bayes_probit.md) |
+| `HS.LM()` | [`bayes_lm_hs()`](https://t-momozaki.github.io/DRBayes/reference/bayes_lm_hs.md) |
+| `HS.Logit()` | [`bayes_logit_hs()`](https://t-momozaki.github.io/DRBayes/reference/bayes_logit_hs.md) |
+| `HS.Probit()` | [`bayes_probit_hs()`](https://t-momozaki.github.io/DRBayes/reference/bayes_probit_hs.md) |
 
-[`DRBayes.BB.nleqslv()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md)
-solved the same two weighted regressions with a general nonlinear root
-finder and agreed with
-[`DRBayes.BB()`](https://t-momozaki.github.io/DRBayes/reference/DRBayes-deprecated.md)
-to about 1e-08, the difference being only the root finder’s stopping
-tolerance, so it forwards to
+`DRBayes.BB.nleqslv()` solved the same two weighted regressions with a
+general nonlinear root finder and agreed with `DRBayes.BB()` to about
+1e-08, the difference being only the root finder’s stopping tolerance,
+so it forwards to
 [`drbayes_bb()`](https://t-momozaki.github.io/DRBayes/reference/drbayes_bb.md)
 rather than being kept as a second implementation. `nleqslv` and
 `parallelly` are no longer dependencies.

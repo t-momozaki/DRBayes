@@ -13,7 +13,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">DRBayes</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -43,6 +43,13 @@
       <small>Source: <a href="https://github.com/t-momozaki/DRBayes/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.1.2" id="drbayes-012">DRBayes 0.1.2<a class="anchor" aria-label="anchor" href="#drbayes-012"></a></h2>
+<div class="section level3">
+<h3 id="breaking-changes-0-1-2">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-0-1-2"></a></h3>
+<ul><li>The dotted names superseded in 0.1.0 (<code>DRBayes.PC()</code>, <code>DRBayes.BB()</code>, <code>DRBayes.BB.nleqslv()</code>, <code>B.LM()</code>, <code>B.Logit()</code>, <code>B.Probit()</code>, <code>HS.LM()</code>, <code>HS.Logit()</code> and <code>HS.Probit()</code>) have been removed, as their warning announced. The table under “Renamed functions” in the 0.1.1 notes below gives the replacement for each.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.1.1" id="drbayes-011">DRBayes 0.1.1<a class="anchor" aria-label="anchor" href="#drbayes-011"></a></h2>
 <p>First public release, of the reference implementation of Orihara, Momozaki and Sugasawa (2025), “Bayesian Doubly Robust Causal Inference via Posterior Coupling” (<a href="https://doi.org/10.48550/arXiv.2506.04868" class="external-link">doi:10.48550/arXiv.2506.04868</a>).</p>
@@ -75,25 +82,25 @@
 <p>The exported names were brought to one scheme and moved away from dots, since a dot is how R marks an S3 method and <code>DRBayes.PC</code> could not be told apart from a <code>print</code> method for class <code>DRBayes</code>. The old names still work and forward to their replacements with a warning, and will be removed in the next release.</p>
 <table class="table"><thead><tr><th>Old</th>
 <th>New</th>
-</tr></thead><tbody><tr><td><code><a href="../reference/DRBayes-deprecated.html">DRBayes.PC()</a></code></td>
+</tr></thead><tbody><tr><td><code>DRBayes.PC()</code></td>
 <td><code><a href="../reference/drbayes_pc.html">drbayes_pc()</a></code></td>
 </tr><tr><td>
-<code><a href="../reference/DRBayes-deprecated.html">DRBayes.BB()</a></code>, <code><a href="../reference/DRBayes-deprecated.html">DRBayes.BB.nleqslv()</a></code>
+<code>DRBayes.BB()</code>, <code>DRBayes.BB.nleqslv()</code>
 </td>
 <td><code><a href="../reference/drbayes_bb.html">drbayes_bb()</a></code></td>
-</tr><tr><td><code><a href="../reference/DRBayes-deprecated.html">B.LM()</a></code></td>
+</tr><tr><td><code>B.LM()</code></td>
 <td><code><a href="../reference/bayes_lm.html">bayes_lm()</a></code></td>
-</tr><tr><td><code><a href="../reference/DRBayes-deprecated.html">B.Logit()</a></code></td>
+</tr><tr><td><code>B.Logit()</code></td>
 <td><code><a href="../reference/bayes_logit.html">bayes_logit()</a></code></td>
-</tr><tr><td><code><a href="../reference/DRBayes-deprecated.html">B.Probit()</a></code></td>
+</tr><tr><td><code>B.Probit()</code></td>
 <td><code><a href="../reference/bayes_probit.html">bayes_probit()</a></code></td>
-</tr><tr><td><code><a href="../reference/DRBayes-deprecated.html">HS.LM()</a></code></td>
+</tr><tr><td><code>HS.LM()</code></td>
 <td><code><a href="../reference/bayes_lm_hs.html">bayes_lm_hs()</a></code></td>
-</tr><tr><td><code><a href="../reference/DRBayes-deprecated.html">HS.Logit()</a></code></td>
+</tr><tr><td><code>HS.Logit()</code></td>
 <td><code><a href="../reference/bayes_logit_hs.html">bayes_logit_hs()</a></code></td>
-</tr><tr><td><code><a href="../reference/DRBayes-deprecated.html">HS.Probit()</a></code></td>
+</tr><tr><td><code>HS.Probit()</code></td>
 <td><code><a href="../reference/bayes_probit_hs.html">bayes_probit_hs()</a></code></td>
-</tr></tbody></table><p><code><a href="../reference/DRBayes-deprecated.html">DRBayes.BB.nleqslv()</a></code> solved the same two weighted regressions with a general nonlinear root finder and agreed with <code><a href="../reference/DRBayes-deprecated.html">DRBayes.BB()</a></code> to about 1e-08, the difference being only the root finder’s stopping tolerance, so it forwards to <code><a href="../reference/drbayes_bb.html">drbayes_bb()</a></code> rather than being kept as a second implementation. <code>nleqslv</code> and <code>parallelly</code> are no longer dependencies.</p>
+</tr></tbody></table><p><code>DRBayes.BB.nleqslv()</code> solved the same two weighted regressions with a general nonlinear root finder and agreed with <code>DRBayes.BB()</code> to about 1e-08, the difference being only the root finder’s stopping tolerance, so it forwards to <code><a href="../reference/drbayes_bb.html">drbayes_bb()</a></code> rather than being kept as a second implementation. <code>nleqslv</code> and <code>parallelly</code> are no longer dependencies.</p>
 </div>
 <div class="section level3">
 <h3 id="speed-and-memory-0-1-1">Speed and memory<a class="anchor" aria-label="anchor" href="#speed-and-memory-0-1-1"></a></h3>

@@ -1305,7 +1305,7 @@ sessionInfo()
 #> [1] stats     graphics  grDevices utils     datasets  methods   base     
 #> 
 #> other attached packages:
-#> [1] ggplot2_4.0.3 DRBayes_0.1.1
+#> [1] ggplot2_4.0.3 DRBayes_0.1.2
 #> 
 #> loaded via a namespace (and not attached):
 #>  [1] gtable_0.3.6        jsonlite_2.0.0      RcppTN_0.2-2       
@@ -1314,7 +1314,7 @@ sessionInfo()
 #> [10] globals_0.20.0      systemfonts_1.3.2   scales_1.4.0       
 #> [13] textshaping_1.0.5   yaml_2.3.12         fastmap_1.2.0      
 #> [16] R6_2.6.1            labeling_0.4.3      generics_0.1.4     
-#> [19] knitr_1.52          pgdraw_1.1          future_1.76.0      
+#> [19] knitr_1.52          pgdraw_1.1          future_1.80.0      
 #> [22] tibble_3.3.1        desc_1.4.3          bslib_0.12.0       
 #> [25] pillar_1.11.1       RColorBrewer_1.1-3  rlang_1.3.0        
 #> [28] cachem_1.1.0        xfun_0.61           fs_2.1.0           

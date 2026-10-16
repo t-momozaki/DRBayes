@@ -802,10 +802,10 @@ sessionInfo()
 #> [1] stats     graphics  grDevices utils     datasets  methods   base     
 #> 
 #> other attached packages:
-#> [1] dplyr_1.2.1   ggplot2_4.0.3 DRBayes_0.1.1
+#> [1] dplyr_1.2.1   ggplot2_4.0.3 DRBayes_0.1.2
 #> 
 #> loaded via a namespace (and not attached):
-#>  [1] tensorA_0.36.2.1     future_1.76.0        sass_0.4.10         
+#>  [1] tensorA_0.36.2.1     future_1.80.0        sass_0.4.10         
 #>  [4] generics_0.1.4       listenv_1.1.0        digest_0.6.39       
 #>  [7] magrittr_2.0.5       evaluate_1.0.5       grid_4.6.1          
 #> [10] RColorBrewer_1.1-3   mvtnorm_1.4-2        instantiate_0.2.4   

@@ -27,13 +27,13 @@ arXiv:2506.04868. doi:10.48550/arXiv.2506.04868
     }
 
 Orihara, S., Momozaki, T., & Sugasawa, S. (2025). DRBayes: Bayesian
-Doubly Robust Causal Inference Methods. R package version 0.1.1.
+Doubly Robust Causal Inference Methods. R package version 0.1.2.
 https://github.com/t-momozaki/DRBayes
 
     @Manual{drbayes-package,
       title = {DRBayes: Bayesian Doubly Robust Causal Inference Methods},
       author = {Shunichiro Orihara and Tomotaka Momozaki and Shonosuke Sugasawa},
       year = {2025},
-      note = {R package version 0.1.1},
+      note = {R package version 0.1.2},
       url = {https://github.com/t-momozaki/DRBayes},
     }
