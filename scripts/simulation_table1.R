@@ -179,8 +179,9 @@ run_replication <- function(data, specification, seed) {
     # comparison of Monte Carlo error.
     saarela <- drbayes_bb(outcome.formula, ps.formula, data = data,
                           num_iterations = length(fit$pc), verbose = FALSE)
-    luo <- luo_estimate(outcome.formula, ps.formula, data,
-                        n_draws = length(fit$pc), n_burn = mcmc$bn)
+    # Luo et al.'s own sampler settings (5000 draws after 1000 burn-in), not
+    # those of the proposed method: each method is run as its authors ran it.
+    luo <- luo_estimate(outcome.formula, ps.formula, data)
 
     estimates <- rbind(
       aipw_estimate(outcome.formula, ps.formula, data),

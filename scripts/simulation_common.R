@@ -253,21 +253,29 @@ aipw_estimate <- function(outcome.formula, ps.formula, data) {
 #' moderate \eqn{\lambda^\top U_j} where the logarithm, evaluated by factoring
 #' out the largest exponent, does not.
 #'
-#' The posterior is sampled by a random walk Metropolis chain over
-#' \eqn{(\tau, \beta, \phi)} under a flat prior, started at the solution of the
-#' estimating equation and proposing from the least squares covariance of that
-#' solution, scaled by the usual \eqn{2.4^2 / d}.
+#' The posterior is sampled as Luo et al. (2023) describe in section 3: normal
+#' priors with mean 0 and standard deviation 1000 on every parameter, and a
+#' Metropolis-Hastings chain with an independent multivariate t proposal whose
+#' location is the solution of the estimating equation (the maximum of the
+#' empirical likelihood) and whose dispersion is the least squares covariance
+#' of the working model (2.3). The paper gives the t distribution only as an
+#' example and states no degrees of freedom; \code{proposal_df} sets them.
+#' Their simulations keep 5000 draws after 1000 burn-in, the defaults here.
+#' Where the inner minimisation does not converge, the tilting parameter is
+#' taken not to exist (their Assumption 4.8) and the point is rejected.
 #'
-#' This is a reimplementation from the description in section 4.3, not the
-#' authors' own code, and it is here rather than in the package because the
-#' package implements posterior coupling and nothing else.
+#' This is a reimplementation from Luo et al. (2023) and section 4.3 of the
+#' paper, not the authors' own code, and it is here rather than in the package
+#' because the package implements posterior coupling and nothing else.
 #'
 #' @param outcome.formula Formula for the outcome model. The treatment must
 #'   appear as a main effect; its coefficient is the estimand.
 #' @param ps.formula Formula for the propensity score model.
 #' @param data Data frame holding every variable in both formulas.
-#' @param n_draws Number of posterior draws to keep.
-#' @param n_burn Number of leading draws to discard.
+#' @param n_draws Number of posterior draws to keep. Default 5000, as in
+#'   Luo et al. (2023).
+#' @param n_burn Number of leading draws to discard. Default 1000, as there.
+#' @param proposal_df Degrees of freedom of the multivariate t proposal.
 #'
 #' @return Numeric vector of \code{n_draws} posterior draws of the treatment
 #'   effect, carrying the Metropolis acceptance rate as the attribute
@@ -281,7 +289,7 @@ aipw_estimate <- function(outcome.formula, ps.formula, data) {
 #' Schennach, S. M. (2005). Bayesian exponentially tilted empirical likelihood.
 #' Biometrika, 92(1), 31-46.
 luo_estimate <- function(outcome.formula, ps.formula, data,
-                         n_draws = 4000L, n_burn = 1000L) {
+                         n_draws = 5000L, n_burn = 1000L, proposal_df = 5) {
   data <- complete_rows(outcome.formula, ps.formula, data)
 
   treatment <- all.vars(ps.formula)[1]
@@ -324,9 +332,11 @@ luo_estimate <- function(outcome.formula, ps.formula, data,
     }
     solved <- stats::optim(rep(0, ncol(U)), objective, gradient,
                            method = "BFGS",
-                           control = list(maxit = 200L, reltol = 1e-10))
+                           control = list(maxit = 1000L, reltol = 1e-10))
+    if (solved$convergence != 0L) return(-Inf)
     v <- drop(U %*% solved$par)
-    value <- sum(v) - n * (max(v) + log(sum(exp(v - max(v)))))
+    value <- sum(v) - n * (max(v) + log(sum(exp(v - max(v))))) +
+      sum(stats::dnorm(theta, 0, 1000, log = TRUE))
     if (is.finite(value)) value else -Inf
   }
 
@@ -343,20 +353,30 @@ luo_estimate <- function(outcome.formula, ps.formula, data,
          "estimator out of the comparison.", call. = FALSE)
   }
   residual_variance <- sum(start$residuals^2) / (n - length(theta))
-  proposal <- chol(residual_variance * chol2inv(qr.R(qr(design))) *
-                     2.4^2 / length(theta))
+  location   <- theta
+  dispersion <- residual_variance * chol2inv(qr.R(qr(design)))
+  log_q <- function(x) {
+    mvtnorm::dmvt(x, delta = location, sigma = dispersion, df = proposal_df,
+                  log = TRUE)
+  }
 
-  current  <- log_posterior(theta)
-  kept     <- numeric(n_draws)
-  accepted <- 0L
+  # Independent proposals: the acceptance ratio carries the proposal density
+  # at both points, which a random walk would cancel.
+  current   <- log_posterior(theta)
+  current_q <- log_q(theta)
+  kept      <- numeric(n_draws)
+  accepted  <- 0L
 
   for (iteration in seq_len(n_burn + n_draws)) {
-    candidate <- theta + drop(stats::rnorm(length(theta)) %*% proposal)
-    proposed  <- log_posterior(candidate)
-    if (log(stats::runif(1)) < proposed - current) {
-      theta    <- candidate
-      current  <- proposed
-      accepted <- accepted + 1L
+    candidate  <- drop(mvtnorm::rmvt(1, sigma = dispersion, df = proposal_df,
+                                     delta = location))
+    proposed   <- log_posterior(candidate)
+    proposed_q <- log_q(candidate)
+    if (log(stats::runif(1)) < (proposed - current) - (proposed_q - current_q)) {
+      theta     <- candidate
+      current   <- proposed
+      current_q <- proposed_q
+      accepted  <- accepted + 1L
     }
     if (iteration > n_burn) kept[iteration - n_burn] <- theta[1]
   }
